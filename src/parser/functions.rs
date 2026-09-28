@@ -89,3 +89,19 @@ pub fn fun_decl(input: &str) -> IResult<&str, UncheckedFunDecl> {
         },
     ))
 }
+
+/// Parse a struct type: `struct Name`.
+pub fn struct_type_name(input: &str) -> IResult<&str, Type> {
+    map(
+        tuple((
+            preceded(multispace0, tag("struct")),
+            preceded(multispace1, identifier),
+        )),
+        |(_, name)| Type::Struct(name.to_string()),
+    )(input)
+}
+
+/// Parse any type allowed for a variable declaration: type_name | struct_type_name.
+pub fn value_type_name(input: &str) -> IResult<&str, Type> {
+    alt((struct_type_name, type_name))(input)
+}

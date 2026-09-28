@@ -60,6 +60,7 @@ pub mod identifiers;
 pub mod literals;
 pub mod program;
 pub mod statements;
+pub mod structs;
 
 pub use expressions::expression;
 pub use functions::fun_decl;
