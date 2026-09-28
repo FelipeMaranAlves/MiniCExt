@@ -56,6 +56,8 @@ pub enum Type {
     Float,
     Bool,
     Str,
+    /// a user-defined struct type, identified by its declared name.
+    Struct(String),
     Array(Box<Type>),
     Fun(Vec<Type>, Box<Type>),
     /// Matches any type. Only used as a parameter type in native stdlib registrations.
@@ -112,6 +114,11 @@ pub enum Expr<Ty> {
         base: Box<ExprD<Ty>>,
         index: Box<ExprD<Ty>>,
     },
+    /// struct field access (struct.field)
+    Field {
+        base: Box<ExprD<Ty>>,
+        field: String,
+    },
 }
 
 /// Statement with type decoration.
@@ -128,7 +135,7 @@ pub enum Statement<Ty> {
     Decl {
         name: String,
         ty: Type,
-        init: Box<ExprD<Ty>>,
+        init: Option<Box<ExprD<Ty>>>,
     },
     Assign {
         target: Box<ExprD<Ty>>,
@@ -167,15 +174,38 @@ pub struct FunDecl<Ty> {
     pub body: Box<StatementD<Ty>>,
 }
 
+/// One field in a struct declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructField {
+    pub name: String,
+    pub ty: Type,
+}
+
+/// A complete struct declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDecl {
+    pub name: String,
+    pub fields: Vec<StructField>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TopLevelItem<Ty> {
+    Function(FunDecl<Ty>),
+    Struct(StructDecl),
+}
+
 /// A complete MiniC program: function declarations only. Execution starts at `main`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program<Ty> {
-    pub functions: Vec<FunDecl<Ty>>,
+    pub itens: Vec<TopLevelItem<Ty>>,
 }
 
 impl<Ty> Program<Ty> {
     pub fn main_function(&self) -> Option<&FunDecl<Ty>> {
-        self.functions.iter().find(|f| f.name == "main")
+        self.itens.iter().find_map(|item| match item {
+            TopLevelItem::Function(function) if function.name == "main" => Some(function),
+            _ => None,
+        })
     }
 }
 
