@@ -197,12 +197,12 @@ pub enum TopLevelItem<Ty> {
 /// A complete MiniC program: function declarations only. Execution starts at `main`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program<Ty> {
-    pub itens: Vec<TopLevelItem<Ty>>,
+    pub items: Vec<TopLevelItem<Ty>>,
 }
 
 impl<Ty> Program<Ty> {
     pub fn main_function(&self) -> Option<&FunDecl<Ty>> {
-        self.itens.iter().find_map(|item| match item {
+        self.items.iter().find_map(|item| match item {
             TopLevelItem::Function(function) if function.name == "main" => Some(function),
             _ => None,
         })
