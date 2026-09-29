@@ -26,12 +26,58 @@
 //! `main` is a semantic constraint checked in the next pipeline stage, not
 //! a syntactic one enforced here.
 
-use crate::ir::ast::{Program, UncheckedProgram};
+use crate::ir::ast::{Program, TopLevelItem, UncheckedProgram};
 use crate::parser::functions::fun_decl;
-use nom::{combinator::map, multi::many0, IResult};
+use crate::parser::structs::struct_decl;
+use nom::{branch::alt, combinator::map, multi::many0, IResult};
 
-/// Parse a complete MiniC program: zero or more function declarations.
-/// Execution starts at the `main` function (validated by the type checker).
+/// Parse a single top-level item: either a struct declaration or a function declaration.
+fn top_level_item(input: &str) -> IResult<&str, TopLevelItem<()>> {
+    alt((
+        map(struct_decl, TopLevelItem::Struct),
+        map(fun_decl, TopLevelItem::Function),
+    ))(input)
+}
+
+/// Parse a complete MiniC program: zero or more top-level items (functions and structs).
 pub fn program(input: &str) -> IResult<&str, UncheckedProgram> {
-    map(many0(fun_decl), |functions| Program { functions })(input)
+    map(many0(top_level_item), |items| Program { items })(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::ast::{StructDecl, StructField, Type};
+
+    #[test]
+    fn test_empty_program() {
+        let (rest, prog) = program("").unwrap();
+        assert_eq!(rest, "");
+        assert!(prog.items.is_empty());
+    }
+
+    #[test]
+    fn test_program_functions_only() {
+        let input = "void f() {} int g() { return 0; }";
+        let (rest, prog) = program(input).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(prog.items.len(), 2);
+        assert!(matches!(prog.items[0], TopLevelItem::Function(_)));
+        assert!(matches!(prog.items[1], TopLevelItem::Function(_)));
+    }
+
+    #[test]
+    fn test_program_mixed_preserves_order() {
+        let input = r#"
+            struct P { int x; };
+            void f() {}
+            struct Q { float y; };
+        "#;
+        let (rest, prog) = program(input).unwrap();
+        assert_eq!(rest.trim(), "");
+        assert_eq!(prog.items.len(), 3);
+        assert!(matches!(prog.items[0], TopLevelItem::Struct(ref s) if s.name == "P"));
+        assert!(matches!(prog.items[1], TopLevelItem::Function(ref f) if f.name == "f"));
+        assert!(matches!(prog.items[2], TopLevelItem::Struct(ref s) if s.name == "Q"));
+    }
 }

@@ -63,8 +63,9 @@ pub mod statements;
 pub mod structs;
 
 pub use expressions::expression;
-pub use functions::fun_decl;
+pub use functions::{fun_decl, value_type_name};
 pub use identifiers::identifier;
 pub use literals::{literal, Literal};
 pub use program::program;
 pub use statements::{assignment, statement};
+pub use structs::struct_decl;
