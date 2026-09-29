@@ -2,11 +2,13 @@
 //!
 //! # Overview
 //!
-//! Exposes two public functions:
+//! Exposes three public functions:
 //!
 //! * [`expression`] — the top-level entry point; parses any MiniC expression.
 //! * [`parse_call`] — parses a function call `name(arg, …)`; re-used by the
 //!   statement parser to handle call-statements.
+//! * [`postfix`] — parses the chain of `[ expr ]` and `.field` suffixes;
+//!   re-used by the statement parser for assignment targets.
 //!
 //! # Design Decisions
 //!
@@ -90,25 +92,43 @@ fn atom(input: &str) -> IResult<&str, UncheckedExpr> {
     ))(input)
 }
 
-/// Primary: atom with zero or more index postfixes `[ expr ]`.
+/// Primary: atom followed by its postfix chain.
 fn primary(input: &str) -> IResult<&str, UncheckedExpr> {
-    let (mut rest, mut acc) = atom(input)?;
+    let (rest, base) = atom(input)?;
+    postfix(rest, base)
+}
+
+/// Postfix chain applied to `base`: zero or more `[ expr ]` or `.field`, in any order.
+/// Accumulating left to right makes `p.v[i]` an `Index` over a `Field`.
+pub fn postfix(input: &str, base: UncheckedExpr) -> IResult<&str, UncheckedExpr> {
+    let (mut rest, mut acc) = (input, base);
     loop {
-        let index_parse = delimited(
+        let index = delimited(
             preceded(multispace0, char('[')),
             preceded(multispace0, expression),
             preceded(multispace0, char(']')),
         )(rest);
-        match index_parse {
-            Ok((r, index)) => {
-                acc = wrap(Expr::Index {
-                    base: Box::new(acc),
-                    index: Box::new(index),
-                });
-                rest = r;
-            }
-            Err(_) => break,
+        if let Ok((r, index)) = index {
+            acc = wrap(Expr::Index {
+                base: Box::new(acc),
+                index: Box::new(index),
+            });
+            rest = r;
+            continue;
         }
+        let field = preceded(
+            preceded(multispace0, char('.')),
+            preceded(multispace0, identifier),
+        )(rest);
+        if let Ok((r, field)) = field {
+            acc = wrap(Expr::Field {
+                base: Box::new(acc),
+                field: field.to_string(),
+            });
+            rest = r;
+            continue;
+        }
+        break;
     }
     Ok((rest, acc))
 }

@@ -18,6 +18,9 @@
 //! if_stmt    := 'if' expr block ['else' block]
 //! while_stmt := 'while' expr block
 //! simple     := return | decl | call | assign
+//! decl       := value_type ident ['=' expr]
+//! assign     := lvalue '=' expr
+//! lvalue     := ident ('[' expr ']' | '.' ident)*
 //! ```
 //!
 //! Every simple statement is terminated by `;`.
@@ -33,16 +36,23 @@
 //! (`int`, `float`, …), which is unambiguous. If declaration fails, the
 //! parser backtracks and tries assignment.
 //!
-//! ## `lvalue` handles nested array indexing on the left-hand side
+//! ## The initializer is optional for every type
 //!
-//! An assignment target can be a plain variable (`x = …`) or a nested array
-//! element (`a[i][j] = …`). The private `lvalue` parser accumulates index
-//! suffixes in a loop using the same pattern as the `primary` parser in
-//! `expressions.rs`, producing a left-associative `Index` chain.
+//! `T x;` and `T x = e;` go through the same path and differ only in
+//! `Decl.init` (`None` / `Some`). The parser never branches on the type:
+//! giving `None` its zero value is the type checker's job.
+//!
+//! ## `lvalue` shares the postfix chain with expressions
+//!
+//! An assignment target can be a plain variable (`x = …`), an array element
+//! (`a[i][j] = …`), a struct field (`p.campo = …`) or any mix of them
+//! (`p.v[i] = …`). The private `lvalue` parser starts from an identifier and
+//! reuses [`postfix`] from `expressions.rs`, so reads and writes accept
+//! exactly the same suffixes.
 
 use crate::ir::ast::{Expr, ExprD, Statement, StatementD, UncheckedExpr, UncheckedStmt};
-use crate::parser::expressions::{expression, parse_call};
-use crate::parser::functions::type_name;
+use crate::parser::expressions::{expression, parse_call, postfix};
+use crate::parser::functions::value_type_name;
 use crate::parser::identifiers::identifier;
 use nom::{
     branch::alt,
@@ -82,21 +92,24 @@ fn return_statement(input: &str) -> IResult<&str, UncheckedStmt> {
     Ok((rest, wrap(Statement::Return(expr.map(Box::new)))))
 }
 
-/// Parse a variable declaration: `Type ident = expr ;`. Must come before assignment.
+/// Parse a variable declaration: `Type ident [= expr] ;`. Must come before assignment.
+/// `Type` may be `struct Name`.
 fn decl_statement(input: &str) -> IResult<&str, UncheckedStmt> {
     map(
         tuple((
-            type_name,
+            value_type_name,
             preceded(nom::character::complete::multispace1, identifier),
-            preceded(multispace0, nom::bytes::complete::tag("=")),
-            preceded(multispace0, expression),
+            opt(preceded(
+                preceded(multispace0, tag("=")),
+                preceded(multispace0, expression),
+            )),
             preceded(multispace0, char(';')),
         )),
-        |(ty, name, _, init, _)| {
+        |(ty, name, init, _)| {
             wrap(Statement::Decl {
                 name: name.to_string(),
                 ty,
-                init: Box::new(init),
+                init: init.map(Box::new),
             })
         },
     )(input)
@@ -160,34 +173,15 @@ fn while_statement(input: &str) -> IResult<&str, UncheckedStmt> {
     ))
 }
 
-/// Parse an lvalue: identifier followed by zero or more `[ expr ]` suffixes.
+/// Parse an lvalue: identifier followed by zero or more `[ expr ]` / `.field` suffixes.
+/// Starts from an identifier, not an atom, so literals and calls are never targets.
 fn lvalue(input: &str) -> IResult<&str, UncheckedExpr> {
-    let (mut rest, id) = preceded(multispace0, identifier)(input)?;
-    let mut acc = ExprD {
+    let (rest, id) = preceded(multispace0, identifier)(input)?;
+    let base = ExprD {
         exp: Expr::Ident(id.to_string()),
         ty: (),
     };
-    loop {
-        let index_parse = delimited(
-            preceded(multispace0, char('[')),
-            preceded(multispace0, expression),
-            preceded(multispace0, char(']')),
-        )(rest);
-        match index_parse {
-            Ok((r, index)) => {
-                acc = ExprD {
-                    exp: Expr::Index {
-                        base: Box::new(acc),
-                        index: Box::new(index),
-                    },
-                    ty: (),
-                };
-                rest = r;
-            }
-            Err(_) => break,
-        }
-    }
-    Ok((rest, acc))
+    postfix(rest, base)
 }
 
 /// Parse an assignment statement: `lvalue = expression ;`.
@@ -206,4 +200,174 @@ pub fn assignment(input: &str) -> IResult<&str, UncheckedStmt> {
             })
         },
     )(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::ast::{Literal, Type};
+
+    fn e(exp: Expr<()>) -> Box<UncheckedExpr> {
+        Box::new(ExprD { exp, ty: () })
+    }
+
+    fn ident(name: &str) -> Box<UncheckedExpr> {
+        e(Expr::Ident(name.to_string()))
+    }
+
+    fn field(base: Box<UncheckedExpr>, name: &str) -> Box<UncheckedExpr> {
+        e(Expr::Field {
+            base,
+            field: name.to_string(),
+        })
+    }
+
+    fn decl(name: &str, ty: Type, init: Option<Box<UncheckedExpr>>) -> UncheckedStmt {
+        wrap(Statement::Decl {
+            name: name.to_string(),
+            ty,
+            init,
+        })
+    }
+
+    fn assign(target: Box<UncheckedExpr>, value: Box<UncheckedExpr>) -> UncheckedStmt {
+        wrap(Statement::Assign { target, value })
+    }
+
+    #[test]
+    fn test_struct_decl_without_init() {
+        assert_eq!(
+            statement("struct Pessoa p;"),
+            Ok(("", decl("p", Type::Struct("Pessoa".to_string()), None)))
+        );
+    }
+
+    #[test]
+    fn test_scalar_and_array_decl_without_init() {
+        let cases = [
+            ("int x;", "x", Type::Int),
+            ("float f;", "f", Type::Float),
+            ("bool b;", "b", Type::Bool),
+            ("str s;", "s", Type::Str),
+            ("int[] a;", "a", Type::Array(Box::new(Type::Int))),
+        ];
+        for (src, name, ty) in cases {
+            assert_eq!(statement(src), Ok(("", decl(name, ty, None))), "{src}");
+        }
+    }
+
+    #[test]
+    fn test_decl_with_init_unchanged() {
+        assert_eq!(
+            statement("int x = 1;"),
+            Ok((
+                "",
+                decl("x", Type::Int, Some(e(Expr::Literal(Literal::Int(1)))))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_struct_decl_with_init_is_accepted() {
+        // Decision 18 (no struct-to-struct copy) is enforced by the checker, not here.
+        assert_eq!(
+            statement("struct Pessoa p = q;"),
+            Ok((
+                "",
+                decl("p", Type::Struct("Pessoa".to_string()), Some(ident("q")))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_field_read() {
+        let (rest, expr) = expression("p.campo").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(Box::new(expr), field(ident("p"), "campo"));
+    }
+
+    #[test]
+    fn test_field_in_arithmetic() {
+        let (rest, expr) = expression("p.campo + 1").unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(
+            Box::new(expr),
+            e(Expr::Add(
+                field(ident("p"), "campo"),
+                e(Expr::Literal(Literal::Int(1)))
+            ))
+        );
+    }
+
+    #[test]
+    fn test_field_and_index_chain() {
+        let (_, expr) = expression("p.valores[i]").unwrap();
+        assert_eq!(
+            Box::new(expr),
+            e(Expr::Index {
+                base: field(ident("p"), "valores"),
+                index: ident("i"),
+            })
+        );
+        let (_, expr) = expression("a[i].x").unwrap();
+        assert_eq!(
+            Box::new(expr),
+            field(
+                e(Expr::Index {
+                    base: ident("a"),
+                    index: ident("i"),
+                }),
+                "x"
+            )
+        );
+    }
+
+    #[test]
+    fn test_field_assignment() {
+        assert_eq!(
+            statement("p.campo = 42;"),
+            Ok((
+                "",
+                assign(
+                    field(ident("p"), "campo"),
+                    e(Expr::Literal(Literal::Int(42)))
+                )
+            ))
+        );
+        assert_eq!(
+            statement("p.v[0] = 1;"),
+            Ok((
+                "",
+                assign(
+                    e(Expr::Index {
+                        base: field(ident("p"), "v"),
+                        index: e(Expr::Literal(Literal::Int(0))),
+                    }),
+                    e(Expr::Literal(Literal::Int(1)))
+                )
+            ))
+        );
+    }
+
+    #[test]
+    fn test_rejected_forms() {
+        for src in ["struct Pessoa;", "int x", "p. = 1;", "p.1 = 2;"] {
+            assert!(statement(src).is_err(), "{src}");
+        }
+    }
+
+    #[test]
+    fn test_keyword_prefixed_names_are_assignments() {
+        // `int`/`struct` are matched as prefixes; the mandatory space after the type
+        // keeps `integer` and `structure` as plain identifiers.
+        let one = || e(Expr::Literal(Literal::Int(1)));
+        assert_eq!(
+            statement("integer = 1;"),
+            Ok(("", assign(ident("integer"), one())))
+        );
+        assert_eq!(
+            statement("structure = 1;"),
+            Ok(("", assign(ident("structure"), one())))
+        );
+    }
 }

@@ -57,3 +57,35 @@ atribuídas a T2 e T3 no plano de tasks.
 - `cargo test --lib` — roda os testes de `src/` e ignora `tests/`, que só volta a
   compilar na entrega 2.
 
+
+---
+
+## Commit: T3 — Declaração com struct e acesso a campo
+
+**Data:** 2026-09-28
+**Arquivos:** `src/parser/statements.rs`, `src/parser/expressions.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `decl_statement` usa `value_type_name` | Aceita `struct Nome p;` como declaração |
+| Initializer opcional | `T x;` gera `Decl.init = None`; `T x = e;` gera `Some` — para todos os tipos |
+| `postfix` em `expressions.rs` | Laço de sufixos `[ expr ]` e `.campo`; `.campo` gera `Expr::Field { base, field }` |
+| `lvalue` reusa `postfix` | `p.campo = 42;` e `p.v[i] = 1;` viram `Statement::Assign` |
+| Testes em `#[cfg(test)]` | Declarações com e sem initializer, leitura/escrita de campo, encadeamento e rejeições |
+
+### Por que
+
+Decisão 7 revisada: o parser não ramifica por tipo; quem transforma `None` no
+valor zero é o checker. Decisão 10: acesso a campo com `.`, válido em leitura e
+como destino de atribuição. Leitura (`primary`) e escrita (`lvalue`) usam o
+mesmo `postfix`, então as duas aceitam exatamente os mesmos sufixos.
+`struct Pessoa p = q;` é aceito pelo parser; a recusa da decisão 18 é do checker.
+
+### Verificação
+
+- `cargo test --lib` — 16 testes passando (10 da T3 + 6 da T1), com
+  `program.rs` corrigido **localmente e sem commit**, já que ele é da T2 e ainda
+  impede a lib de compilar.
+- `rustfmt --check` limpo nos dois arquivos.
