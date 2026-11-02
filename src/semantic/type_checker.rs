@@ -471,6 +471,7 @@ fn type_check_expr_inner(
         Expr::AddrOf(elem) => Ok(Expr::AddrOf(Box::new(type_check_expr_to_typed(elem, env)?))),
         Expr::Deref(elem) => Ok(Expr::Deref(Box::new(type_check_expr_to_typed(elem, env)?))),
         Expr::Field { .. } => Err(not_supported_yet("struct field access")),
+        Expr::StructLit { .. } => Err(not_supported_yet("struct literal")),
     }
 }
 
@@ -610,6 +611,7 @@ fn type_check_expr(
             }
         },
         Expr::Field { .. } => Err(not_supported_yet("struct field access")),
+        Expr::StructLit { .. } => Err(not_supported_yet("struct literal")),
         Expr::Deref(elem) => {
             let inner_ty = type_check_expr(elem, env)?;
             match inner_ty {

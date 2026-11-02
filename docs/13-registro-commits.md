@@ -120,3 +120,29 @@ pânico, e os testes de cada dono mostram o erro mudar para o comportamento cert
 
 - `cargo test`: todos os alvos verdes (lib, parser, program, type_checker, interpreter, stdlib, tac_gen).
 - `shelltest tests/cli/`: 12/12.
+
+---
+
+## Commit: AST — nó do literal de struct
+
+**Data:** 2026-11-02
+**Arquivos:** `src/ir/ast.rs`, `src/semantic/type_checker.rs`, `src/interpreter/eval_expr.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `Expr::StructLit { name, fields }` | Literal `Pessoa { idade: 30, nome: "Ana" }` (D23); `fields: Vec<(String, ExprD)>` |
+| Braços com erro explícito | Checker e runtime respondem "struct literal is not supported yet" até a tarefa da Pessoa D |
+
+### Por que
+
+Combinado A+D do doc 16: **lista ordenada**, não mapa. A lista guarda a ordem em
+que o programador escreveu (que vira a ordem de avaliação) e deixa o checker
+detectar campo repetido. Num `HashMap`, `{ a: 1, a: 2 }` viraria um campo só, em
+silêncio. Com este commit, `src/ir/ast.rs` fica fechado para a entrega 2: as
+outras tarefas só adicionam braços de `match`, sem mexer no AST.
+
+### Verificação
+
+- `cargo test` e `shelltest tests/cli/` verdes (nada muda de comportamento).
