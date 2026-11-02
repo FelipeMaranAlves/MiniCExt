@@ -13,7 +13,7 @@ use crate::parser::identifiers::identifier;
 use nom::{
     bytes::complete::tag,
     character::complete::{char, multispace0, multispace1},
-    combinator::{map, verify},
+    combinator::{map, opt, verify},
     multi::many1,
     sequence::{delimited, preceded, tuple},
     IResult,
@@ -42,7 +42,8 @@ fn struct_field(input: &str) -> IResult<&str, StructField> {
     )(input)
 }
 
-/// Parse a complete struct declaration: `struct Name { Type field; ... };`
+/// Parse a complete struct declaration: `struct Name { Type field; ... }` with an
+/// optional trailing `;`.
 /// 
 /// Requires at least one field (Decision 9).
 pub fn struct_decl(input: &str) -> IResult<&str, StructDecl> {
@@ -54,7 +55,8 @@ pub fn struct_decl(input: &str) -> IResult<&str, StructDecl> {
         many1(struct_field),
         preceded(multispace0, char('}')),
     )(rest)?;
-    let (rest, _) = preceded(multispace0, char(';'))(rest)?;
+    // The trailing `;` is optional (D22).
+    let (rest, _) = opt(preceded(multispace0, char(';')))(rest)?;
 
     Ok((
         rest,
@@ -114,6 +116,14 @@ mod tests {
             ],
         };
         assert_eq!(struct_decl(input), Ok(("", expected)));
+    }
+
+    #[test]
+    fn test_struct_decl_trailing_semicolon_is_optional() {
+        let with = struct_decl("struct Point { int x; };");
+        let without = struct_decl("struct Point { int x; }");
+        assert!(matches!(with, Ok(("", _))));
+        assert_eq!(with, without);
     }
 
     #[test]
