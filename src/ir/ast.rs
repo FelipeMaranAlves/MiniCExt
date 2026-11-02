@@ -120,6 +120,12 @@ pub enum Expr<Ty> {
         base: Box<ExprD<Ty>>,
         field: String,
     },
+    /// struct literal: `Name { field: expr, ... }`.
+    /// A list (not a map) keeps source order and lets the checker see repeated fields.
+    StructLit {
+        name: String,
+        fields: Vec<(String, ExprD<Ty>)>,
+    },
     /// Pointer operations
     AddrOf(Box<ExprD<Ty>>),
     Deref(Box<ExprD<Ty>>),
