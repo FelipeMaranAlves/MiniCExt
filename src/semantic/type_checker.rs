@@ -49,7 +49,7 @@ use std::collections::HashMap;
 use crate::environment::Environment;
 use crate::ir::ast::{
     CheckedExpr, CheckedFunDecl, CheckedProgram, CheckedStmt, Expr, ExprD, FunDecl, Literal,
-    Program, Statement, StatementD, Type, UncheckedExpr, UncheckedFunDecl, UncheckedProgram,
+    Program, Statement, StatementD, TopLevelItem, Type, UncheckedExpr, UncheckedFunDecl, UncheckedProgram,
     UncheckedStmt,
 };
 use crate::stdlib::NativeRegistry;
@@ -104,7 +104,7 @@ pub fn type_check(program: &UncheckedProgram) -> Result<CheckedProgram, TypeErro
     }
 
     // Register user-defined function signatures as Type::Fun bindings.
-    for f in &program.functions {
+    for f in program.functions() {
         let param_tys = f.params.iter().map(|(_, ty)| ty.clone()).collect();
         env.declare(f.name.clone(), Type::Fun(param_tys, Box::new(f.return_type.clone())));
     }
@@ -112,12 +112,24 @@ pub fn type_check(program: &UncheckedProgram) -> Result<CheckedProgram, TypeErro
     // Clean snapshot: only function bindings, no variable bindings.
     let fn_snapshot = env.snapshot();
 
-    let mut functions = Vec::new();
-    for f in &program.functions {
-        let checked = type_check_fun_decl(f, &mut env, &fn_snapshot)?;
-        functions.push(checked);
+    // Rebuilt in source order (D1); struct definitions pass through unchanged for now.
+    let mut items = Vec::new();
+    for item in &program.items {
+        let checked = match item {
+            TopLevelItem::Function(f) => {
+                TopLevelItem::Function(type_check_fun_decl(f, &mut env, &fn_snapshot)?)
+            }
+            TopLevelItem::Struct(s) => TopLevelItem::Struct(s.clone()),
+        };
+        items.push(checked);
     }
-    Ok(Program { functions })
+    Ok(Program { items })
+}
+
+/// Explicit error for a construct whose checking belongs to a later task,
+/// so the CLI reports it instead of panicking like `todo!()` would.
+fn not_supported_yet(what: &str) -> TypeError {
+    TypeError::new(format!("{} is not supported yet", what))
 }
 
 fn type_check_fun_decl(
@@ -152,6 +164,9 @@ fn type_check_stmt(
             if env.get(name).is_some() {
                 return Err(TypeError::new(format!("redeclaration of variable: {}", name)));
             }
+            let init = init
+                .as_ref()
+                .ok_or_else(|| not_supported_yet("declaration without initializer"))?;
             let init_checked = type_check_expr_to_typed(init, env)?;
             if !types_compatible(&init_checked.ty, ty) {
                 return Err(TypeError::new(format!(
@@ -163,7 +178,7 @@ fn type_check_stmt(
             Statement::Decl {
                 name: name.clone(),
                 ty: ty.clone(),
-                init: Box::new(init_checked),
+                init: Some(Box::new(init_checked)),
             }
         }
         Statement::Assign { target, value } => {
@@ -455,6 +470,7 @@ fn type_check_expr_inner(
         }),
         Expr::AddrOf(elem) => Ok(Expr::AddrOf(Box::new(type_check_expr_to_typed(elem, env)?))),
         Expr::Deref(elem) => Ok(Expr::Deref(Box::new(type_check_expr_to_typed(elem, env)?))),
+        Expr::Field { .. } => Err(not_supported_yet("struct field access")),
     }
 }
 
@@ -593,6 +609,7 @@ fn type_check_expr(
                 )),
             }
         },
+        Expr::Field { .. } => Err(not_supported_yet("struct field access")),
         Expr::Deref(elem) => {
             let inner_ty = type_check_expr(elem, env)?;
             match inner_ty {

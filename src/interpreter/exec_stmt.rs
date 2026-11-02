@@ -47,6 +47,9 @@ pub fn exec_stmt(stmt: &CheckedStmt, env: &mut Environment<Value>) -> ExecResult
     match &stmt.stmt {
         // --- Variable declaration ---
         Statement::Decl { name, init, .. } => {
+            let init = init.as_ref().ok_or_else(|| {
+                RuntimeError::new("declaration without initializer is not supported yet")
+            })?;
             let val = eval_expr(init, env)?;
             env.declare(name.clone(), val);
             Ok(None)

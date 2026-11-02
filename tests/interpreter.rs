@@ -58,7 +58,7 @@ fn build_program_env(program: &CheckedProgram) -> Environment<Value> {
         env.declare(name.clone(), Value::Fn(FnValue::Native(entry.func)));
     }
 
-    for fun in &program.functions {
+    for fun in program.functions() {
         env.declare(
             fun.name.clone(),
             Value::Fn(FnValue::UserDefined(fun.clone())),

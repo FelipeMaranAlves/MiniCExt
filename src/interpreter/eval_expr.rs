@@ -149,6 +149,7 @@ pub fn eval_expr(expr: &CheckedExpr, env: &mut Environment<Value>) -> Result<Val
         }
         Expr::AddrOf(elem) => eval_addr_of(elem, env),
         Expr::Deref(elem) => eval_deref(elem, env),
+        Expr::Field { .. } => Err(RuntimeError::new("struct field access is not supported yet")),
     }
 }
 
