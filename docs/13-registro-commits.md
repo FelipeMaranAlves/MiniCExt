@@ -256,3 +256,32 @@ reaparecer mais tarde como outro erro (ou não reaparecer).
 ### Verificação
 
 - `cargo test` verde; `shelltest tests/cli/`: 13/13.
+
+---
+
+## Commit: Checker — declaração sem inicializador (D20)
+
+**Data:** 2026-11-02
+**Arquivos:** `src/semantic/type_checker.rs`, `tests/type_checker.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `Statement::Decl` com `init: None` | Aceito para qualquer tipo, exceto `void`; a variável entra no ambiente com o tipo declarado |
+| `init: Some(e)` | Igual a antes: `e` é checado **antes** de declarar o nome (`int x = x;` continua sendo erro) |
+| Testes | Todos os tipos sem inicializador; `x` continua `int` depois (`x = "a"` é erro); `void v;` e redeclaração continuam erro; o `None` chega ao programa checado |
+
+### Por que
+
+D20: ficar sem valor é um **estado de execução**, não um tipo diferente. Na
+regra de tipagem, `T x;` estende o contexto exatamente como `T x = e;`
+(Γ ⊢ … ⇒ Γ, x:T). O checker não tenta provar que `x` foi atribuído antes de
+ser lido (*definite assignment*, como Java e C#): essa análise de fluxo
+rejeitaria programas corretos, como atribuir dentro de um `while` e ler depois.
+A verificação fica no runtime (próximo commit). Se o struct `Pessoa` em
+`Pessoa p;` existe é responsabilidade da Pessoa B.
+
+### Verificação
+
+- `cargo test` (type_checker: 44) e `shelltest tests/cli/` verdes.

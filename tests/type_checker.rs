@@ -354,3 +354,36 @@ fn test_type_check_assign_int_from_pointer() {
         err.message
     );
 }
+
+// --- Declaration without initializer (D20) ---
+
+#[test]
+fn test_type_check_decl_without_init_any_type() {
+    for decl in ["int x;", "float f;", "bool b;", "str s;", "int[] a;", "int* p;"] {
+        let src = format!("void main() {{ {decl} }}");
+        assert!(parse_and_type_check(&src).is_ok(), "{decl}");
+    }
+}
+
+#[test]
+fn test_type_check_decl_without_init_keeps_declared_type() {
+    // `x` is still an int: later uses are checked against `int`.
+    assert!(parse_and_type_check("void main() { int x; x = 1; int y = x + 1; }").is_ok());
+    let err = parse_and_type_check("void main() { int x; x = \"a\"; }").unwrap_err();
+    assert!(err.message.contains("assignment to x"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_decl_without_init_rules_still_apply() {
+    let err = parse_and_type_check("void main() { void v; }").unwrap_err();
+    assert!(err.message.contains("void"), "{}", err.message);
+    let err = parse_and_type_check("void main() { int x; int x; }").unwrap_err();
+    assert!(err.message.contains("redeclaration"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_decl_without_init_keeps_none() {
+    let prog = parse_and_type_check("void main() int x;").unwrap();
+    let main_fn = prog.main_function().unwrap();
+    assert!(matches!(main_fn.body.stmt, Statement::Decl { init: None, .. }));
+}
