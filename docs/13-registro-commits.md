@@ -116,6 +116,19 @@ base de que as outras tarefas dependem. Os casos ainda não implementados dão
 **erro explícito**, e não `todo!()`: o CLI informa a falha em vez de entrar em
 pânico, e os testes de cada dono mostram o erro mudar para o comportamento certo.
 
+**`TopLevelItem` continua sendo a representação do programa.** O que deixou de
+existir foi o campo antigo `functions`, que o checker, o interpretador, os testes
+e o código de ponteiros do upstream ainda usavam. Em vez de repetir em cada um
+deles o `match` que separa funções de structs, `Program::functions()` oferece
+essa visão a partir de `items`: quem só precisa das funções (registrar
+assinaturas, achar a `main`, montar o ambiente) não precisa saber que structs
+existem. Quem precisa dos dois tipos de item, como o checker ao remontar o
+programa, continua fazendo `match` em `TopLevelItem`.
+
+O codegen (entrega 3) não foi alterado: ele tem um curinga `_ => todo!()`, então
+compila, mas entra em pânico se receber `Field`, literal de struct ou declaração
+sem inicializador. O CLI não chama o codegen.
+
 ### Verificação
 
 - `cargo test`: todos os alvos verdes (lib, parser, program, type_checker, interpreter, stdlib, tac_gen).
@@ -166,8 +179,12 @@ outras tarefas só adicionam braços de `match`, sem mexer no AST.
 Pré-requisito do próximo commit (`struct` opcional ao usar o tipo): quando um
 identificador puder ser o nome de um tipo struct, `if x;` seria lido como "declarar `x` do tipo `if`". Antes,
 as palavras-chave só eram reconhecidas pelo `tag` de cada comando, e nada
-impedia usá-las como nome de variável (`int struct = 1;` passava). Reservar só
-a palavra **exata** mantém nomes como `structure` válidos.
+impedia usá-las como nome de variável (`int struct = 1;` passava). Ficam
+reservadas todas as palavras que começam um comando ou são operadores (`if`,
+`else`, `while`, `and`, `or`, `struct`), e não só `if`, para que nenhuma delas
+possa ser lida como nome de tipo ou de variável. Reservar só a palavra **exata** mantém
+nomes como `structure` válidos. O custo é que programas que usavam essas
+palavras como nome deixam de compilar; nenhum teste ou fixture fazia isso.
 
 ### Verificação
 
@@ -290,8 +307,11 @@ regra de tipagem, `T x;` estende o contexto exatamente como `T x = e;`
 (Γ ⊢ … ⇒ Γ, x:T). O checker não tenta provar que `x` foi atribuído antes de
 ser lido (*definite assignment*, como Java e C#): essa análise de fluxo
 rejeitaria programas corretos, como atribuir dentro de um `while` e ler depois.
-A verificação fica no runtime (próximo commit). Se o struct `Pessoa` em
-`Pessoa p;` existe é responsabilidade da tarefa do registro de structs.
+A verificação fica no runtime (próximo commit).
+
+**Limite conhecido:** o checker ainda aceita qualquer nome como tipo struct, até
+um que não foi definido (`Fantasma f;`). Validar o nome é da tarefa do registro
+de structs.
 
 ### Verificação
 
@@ -324,6 +344,17 @@ chave) recusaria `*p = 5` com `p = &x`, e `*p` daria "endereço inválido" em ve
 de "não atribuído". Com `Undefined` no `store`, o endereço existe desde a
 declaração, e só a **leitura** é proibida.
 
+**A mensagem é diferente da de variável não declarada.** O interpretador já
+usava "undefined variable 'x'" para um nome que **não existe**. Por isso a leitura
+de uma variável declarada mas ainda sem valor diz "variable 'x' was read before
+being assigned": a palavra *undefined* sozinha confundiria os dois casos.
+
+**A checagem é na leitura, e não em cada operação.** Assim, `int y = x;` já falha
+na declaração de `y`, e um `Undefined` nunca é copiado para outra variável. Se a
+checagem ficasse nas operações (soma, comparação, `print`...), o valor poderia
+passar de variável em variável até alguém usá-lo, e o erro apareceria longe da
+causa.
+
 **Um portão, vários pontos de leitura.** O plano inicial era checar só em
 `Expr::Ident`, mas os ponteiros criaram outra porta de leitura (`*p` lê do
 `store` sem passar pelo nome). Por isso a regra virou uma função: cada caminho
@@ -335,6 +366,11 @@ chama o mesmo `read_defined`.
 do struct (o `Decl` só tem o nome do tipo), e o checker já garante que o campo
 existe, então "ausente" só pode significar "não atribuído". Na leitura de
 campo, a ausência vira `read_defined(Value::Undefined, "field 'p.idade'")`.
+
+**Estado atual de uma variável struct:** sem a tarefa do registro de structs,
+`Pessoa p;` guarda `Value::Undefined`, como qualquer outra declaração sem
+inicializador. Essa tarefa troca isso por um valor struct **vazio** (mapa sem
+campos) quando o tipo é struct, para que `p.idade = 3` tenha onde gravar.
 
 ### Verificação
 
