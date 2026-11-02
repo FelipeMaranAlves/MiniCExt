@@ -285,3 +285,46 @@ A verificação fica no runtime (próximo commit). Se o struct `Pessoa` em
 ### Verificação
 
 - `cargo test` (type_checker: 44) e `shelltest tests/cli/` verdes.
+
+---
+
+## Commit: Interpretador — valor `undefined` e erro na leitura (D20)
+
+**Data:** 2026-11-02
+**Arquivos:** `src/interpreter/{value,eval_expr,exec_stmt}.rs`, `tests/interpreter.rs`, `tests/cli/run.test`, `tests/fixtures/interpreter_undefined.minic`, `docs/01-language.md`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `Value::Undefined` | Conteúdo de `T x;` até a primeira atribuição |
+| `read_defined(valor, "o quê")` | Portão único de leitura: `Undefined` vira o erro "variable 'x' was read before being assigned" |
+| Pontos de leitura | `Expr::Ident`, `*p` (`eval_deref`) e a base de `a[i] = v` (`assign_index`) passam pelo portão |
+| `&x` | **Não** lê o valor: `int x; int* p = &x; *p = 5;` define `x` |
+| Testes | 9 de runtime (leitura, propagação, todos os tipos, ponteiro, índice, argumento, caminho não executado, laço) + caso de CLI |
+| `docs/01-language.md` | Remove "não há variáveis não inicializadas"; documenta undefined, palavras reservadas, D21 e D22 |
+
+### Por que
+
+**Valor explícito, e não "nome ausente".** Depois do merge do upstream, o
+`Environment` separa nome → endereço (`scopes`) de endereço → valor (`store`).
+Se `T x;` só reservasse o nome, sem valor no `store`, `write_store` (que exige a
+chave) recusaria `*p = 5` com `p = &x`, e `*p` daria "endereço inválido" em vez
+de "não atribuído". Com `Undefined` no `store`, o endereço existe desde a
+declaração, e só a **leitura** é proibida.
+
+**Um portão, vários pontos de leitura.** O doc 16 previa checar só em
+`Expr::Ident`, mas os ponteiros criaram outra porta de leitura (`*p` lê do
+`store` sem passar pelo nome). Por isso a regra virou uma função: cada caminho
+que lê um valor guardado passa por ela. Quem implementar `Field` (Pessoa C)
+chama o mesmo `read_defined`.
+
+**Combinado para campos de struct (A → B, C, D):** campo não atribuído = campo
+**ausente** no mapa do valor struct. O runtime não precisa conhecer a definição
+do struct (o `Decl` só tem o nome do tipo), e o checker já garante que o campo
+existe, então "ausente" só pode significar "não atribuído". Na leitura, C
+transforma a ausência em `read_defined(Value::Undefined, "field 'p.idade'")`.
+
+### Verificação
+
+- `cargo test` (interpreter: 40) e `shelltest tests/cli/`: 14/14.
