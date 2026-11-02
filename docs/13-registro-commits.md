@@ -77,11 +77,11 @@ atribuídas a T2 e T3 no plano de tasks.
 
 ### Por que
 
-Decisão 7 revisada: o parser não ramifica por tipo; quem transforma `None` no
-valor zero é o checker. Decisão 10: acesso a campo com `.`, válido em leitura e
-como destino de atribuição. Leitura (`primary`) e escrita (`lvalue`) usam o
+O inicializador é opcional para todos os tipos, e o parser não ramifica por
+tipo: o que fazer com `None` fica para as etapas seguintes. Acesso a campo usa
+`.` e vale tanto na leitura quanto como destino de atribuição. Leitura (`primary`) e escrita (`lvalue`) usam o
 mesmo `postfix`, então as duas aceitam exatamente os mesmos sufixos.
-`struct Pessoa p = q;` é aceito pelo parser; a recusa da decisão 18 é do checker.
+`struct Pessoa p = q;` é aceito pelo parser; recusar a cópia de um struct inteiro para outro é papel do checker.
 
 ### Verificação
 
@@ -103,9 +103,9 @@ mesmo `postfix`, então as duas aceitam exatamente os mesmos sufixos.
 |---------|-----------|
 | `src/lib.rs` | `semantic`, `interpreter`, `stdlib` e `codegen` voltam a compilar |
 | `Program::functions()` | Itera só as funções de `items`; `main_function()` passa a usá-lo |
-| Checker remonta `items` em ordem | Funções são checadas; structs passam sem mudança (D1) |
-| `Decl` sem inicializador | Erro explícito "not supported yet" no checker e no runtime (liberado na tarefa do undefined) |
-| `Expr::Field` | Erro explícito "not supported yet" no checker e no runtime (tarefa da Pessoa C) |
+| Checker remonta `items` em ordem | Funções são checadas; structs passam sem mudança e mantêm a posição relativa às funções |
+| `Decl` sem inicializador | Erro explícito "not supported yet" no checker e no runtime (liberado no commit da declaração sem inicializador) |
+| `Expr::Field` | Erro explícito "not supported yet" no checker e no runtime (fica para a tarefa de acesso a campo) |
 | Testes migrados | `prog.functions` → `prog.functions()`; `init` → `Some(init)` |
 
 ### Por que
@@ -132,12 +132,12 @@ pânico, e os testes de cada dono mostram o erro mudar para o comportamento cert
 
 | Mudança | Descrição |
 |---------|-----------|
-| `Expr::StructLit { name, fields }` | Literal `Pessoa { idade: 30, nome: "Ana" }` (D23); `fields: Vec<(String, ExprD)>` |
-| Braços com erro explícito | Checker e runtime respondem "struct literal is not supported yet" até a tarefa da Pessoa D |
+| `Expr::StructLit { name, fields }` | Literal `Pessoa { idade: 30, nome: "Ana" }`; `fields: Vec<(String, ExprD)>` |
+| Braços com erro explícito | Checker e runtime respondem "struct literal is not supported yet" até a tarefa do literal de struct |
 
 ### Por que
 
-Combinado A+D do doc 16: **lista ordenada**, não mapa. A lista guarda a ordem em
+Os campos ficam numa **lista ordenada**, não num mapa. A lista guarda a ordem em
 que o programador escreveu (que vira a ordem de avaliação) e deixa o checker
 detectar campo repetido. Num `HashMap`, `{ a: 1, a: 2 }` viraria um campo só, em
 silêncio. Com este commit, `src/ir/ast.rs` fica fechado para a entrega 2: as
@@ -163,8 +163,8 @@ outras tarefas só adicionam braços de `match`, sem mexer no AST.
 
 ### Por que
 
-Pré-requisito da D21 (próximo commit): quando um identificador puder ser o nome
-de um tipo struct, `if x;` seria lido como "declarar `x` do tipo `if`". Antes,
+Pré-requisito do próximo commit (`struct` opcional ao usar o tipo): quando um
+identificador puder ser o nome de um tipo struct, `if x;` seria lido como "declarar `x` do tipo `if`". Antes,
 as palavras-chave só eram reconhecidas pelo `tag` de cada comando, e nada
 impedia usá-las como nome de variável (`int struct = 1;` passava). Reservar só
 a palavra **exata** mantém nomes como `structure` válidos.
@@ -175,7 +175,7 @@ a palavra **exata** mantém nomes como `structure` válidos.
 
 ---
 
-## Commit: Parser — `struct` opcional ao usar o tipo (D21)
+## Commit: Parser — `struct` opcional ao usar o tipo
 
 **Data:** 2026-11-02
 **Arquivos:** `src/parser/functions.rs`, `src/parser/statements.rs`
@@ -189,17 +189,18 @@ a palavra **exata** mantém nomes como `structure` válidos.
 
 ### Por que
 
-D21: o professor pediu menos verbosidade que o C, e o enunciado já escreve
-`Point p`. O parser agora só reconhece a **forma** "tipo seguido de nome"; quem
-confirma que `Pessoa` é um struct definido é o checker (Pessoa B).
+`Pessoa p;` passa a valer o mesmo que `struct Pessoa p;`. O professor pediu
+menos verbosidade que o C, e o enunciado já escreve `Point p`. O parser agora só
+reconhece a **forma** "tipo seguido de nome"; quem confirma que `Pessoa` é um
+struct definido é o checker (tarefa do registro de structs).
 
 A **ordem das alternativas** é a decisão técnica: o `alt` do nom é uma escolha
 ordenada (PEG) e não volta atrás depois de um sucesso. Com `type_name` antes,
 `integer p;` casaria `int` e deixaria `eger p;`, e a declaração inteira
 falharia. O identificador vem antes porque consome a palavra inteira e rejeita
 as reservadas (`int`, `str`, ...), que então caem em `type_name` (`int*`, `int[]`).
-A D15 continua valendo: parâmetros, retorno e campos usam `type_name`, que não
-aceita identificador.
+Structs continuam fora de parâmetros, tipos de retorno e campos: esses lugares
+usam `type_name`, que não aceita identificador.
 
 ### Verificação
 
@@ -207,7 +208,7 @@ aceita identificador.
 
 ---
 
-## Commit: Parser — `;` opcional depois da definição de struct (D22)
+## Commit: Parser — `;` opcional depois da definição de struct
 
 **Data:** 2026-11-02
 **Arquivo:** `src/parser/structs.rs`
@@ -221,7 +222,7 @@ aceita identificador.
 
 ### Por que
 
-D22: no C, o `;` existe porque depois do `}` pode vir uma lista de variáveis
+No C, o `;` existe porque depois do `}` pode vir uma lista de variáveis
 (`struct P {...} a, b;`). O MiniC não tem essa forma, então o `;` não separa
 nada. Aceitar os dois jeitos não cria ambiguidade, porque no topo só existem
 definições de struct e funções, e nenhuma delas começa com `;`.
@@ -247,7 +248,7 @@ definições de struct e funções, e nenhuma delas começa com `;`.
 
 ### Por que
 
-Questão técnica 1 do doc 11. O `program` é um `many0`: ele para no primeiro item
+O `program` é um `many0`: ele para no primeiro item
 que não reconhece e devolve o resto, que o CLI descartava. Antes desta correção,
 a fixture nova **imprimia `1` e saía com código 0**: o struct malformado sumia em
 silêncio. Um erro de sintaxe tem que ser reportado como erro de sintaxe, e não
@@ -267,7 +268,7 @@ estava na lista de pendências do parser. Pode ser proposta também ao upstream.
 
 ---
 
-## Commit: Checker — declaração sem inicializador (D20)
+## Commit: Checker — declaração sem inicializador
 
 **Data:** 2026-11-02
 **Arquivos:** `src/semantic/type_checker.rs`, `tests/type_checker.rs`
@@ -282,13 +283,15 @@ estava na lista de pendências do parser. Pode ser proposta também ao upstream.
 
 ### Por que
 
-D20: ficar sem valor é um **estado de execução**, não um tipo diferente. Na
+Uma variável declarada sem inicializador (`int x;`) fica **undefined** até a
+primeira atribuição, e lê-la antes disso é erro de runtime. Ficar sem valor é um
+**estado de execução**, não um tipo diferente. Na
 regra de tipagem, `T x;` estende o contexto exatamente como `T x = e;`
 (Γ ⊢ … ⇒ Γ, x:T). O checker não tenta provar que `x` foi atribuído antes de
 ser lido (*definite assignment*, como Java e C#): essa análise de fluxo
 rejeitaria programas corretos, como atribuir dentro de um `while` e ler depois.
 A verificação fica no runtime (próximo commit). Se o struct `Pessoa` em
-`Pessoa p;` existe é responsabilidade da Pessoa B.
+`Pessoa p;` existe é responsabilidade da tarefa do registro de structs.
 
 ### Verificação
 
@@ -296,7 +299,7 @@ A verificação fica no runtime (próximo commit). Se o struct `Pessoa` em
 
 ---
 
-## Commit: Interpretador — valor `undefined` e erro na leitura (D20)
+## Commit: Interpretador — valor `undefined` e erro na leitura
 
 **Data:** 2026-11-02
 **Arquivos:** `src/interpreter/{value,eval_expr,exec_stmt}.rs`, `tests/interpreter.rs`, `tests/cli/run.test`, `tests/fixtures/interpreter_undefined.minic`, `docs/01-language.md`
@@ -310,7 +313,7 @@ A verificação fica no runtime (próximo commit). Se o struct `Pessoa` em
 | Pontos de leitura | `Expr::Ident`, `*p` (`eval_deref`) e a base de `a[i] = v` (`assign_index`) passam pelo portão |
 | `&x` | **Não** lê o valor: `int x; int* p = &x; *p = 5;` define `x` |
 | Testes | 9 de runtime (leitura, propagação, todos os tipos, ponteiro, índice, argumento, caminho não executado, laço) + caso de CLI |
-| `docs/01-language.md` | Remove "não há variáveis não inicializadas"; documenta undefined, palavras reservadas, D21 e D22 |
+| `docs/01-language.md` | Remove "não há variáveis não inicializadas"; documenta undefined, palavras reservadas, `struct` opcional no uso e `;` opcional na definição |
 
 ### Por que
 
@@ -321,17 +324,17 @@ chave) recusaria `*p = 5` com `p = &x`, e `*p` daria "endereço inválido" em ve
 de "não atribuído". Com `Undefined` no `store`, o endereço existe desde a
 declaração, e só a **leitura** é proibida.
 
-**Um portão, vários pontos de leitura.** O doc 16 previa checar só em
+**Um portão, vários pontos de leitura.** O plano inicial era checar só em
 `Expr::Ident`, mas os ponteiros criaram outra porta de leitura (`*p` lê do
 `store` sem passar pelo nome). Por isso a regra virou uma função: cada caminho
-que lê um valor guardado passa por ela. Quem implementar `Field` (Pessoa C)
+que lê um valor guardado passa por ela. Quem implementar a leitura de `Field`
 chama o mesmo `read_defined`.
 
-**Combinado para campos de struct (A → B, C, D):** campo não atribuído = campo
+**Combinado para campos de struct:** campo não atribuído = campo
 **ausente** no mapa do valor struct. O runtime não precisa conhecer a definição
 do struct (o `Decl` só tem o nome do tipo), e o checker já garante que o campo
-existe, então "ausente" só pode significar "não atribuído". Na leitura, C
-transforma a ausência em `read_defined(Value::Undefined, "field 'p.idade'")`.
+existe, então "ausente" só pode significar "não atribuído". Na leitura de
+campo, a ausência vira `read_defined(Value::Undefined, "field 'p.idade'")`.
 
 ### Verificação
 

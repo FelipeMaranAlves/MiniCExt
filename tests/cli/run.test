@@ -24,7 +24,8 @@ $ ./target/debug/mini_c --run tests/fixtures/cli_type_mismatch.minic
 >2 /Type error/
 >=1
 
-# undefined (D20): assigning through &x defines x; reading y before assigning fails
+# a variable declared without initializer is undefined: assigning through &x
+# defines x; reading y before assigning it fails
 $ ./target/debug/mini_c --run tests/fixtures/interpreter_undefined.minic
 5
 >2 /variable 'y' was read before being assigned/

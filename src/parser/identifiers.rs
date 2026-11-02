@@ -28,8 +28,8 @@ use nom::{
 };
 
 /// Reserved words: boolean literals, type names and keywords.
-/// Keywords must be reserved because an identifier can now stand for a struct
-/// type (D21): without this, `if x;` would parse as "declare `x` of type `if`".
+/// Keywords must be reserved because a bare identifier can stand for a struct
+/// type (`Pessoa p;`): without this, `if x;` would parse as "declare `x` of type `if`".
 const RESERVED: &[&str] = &[
     "true", "false", "int", "float", "bool", "str", "void", "return", "struct", "if", "else",
     "while", "and", "or",

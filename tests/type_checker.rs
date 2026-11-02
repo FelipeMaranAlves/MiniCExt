@@ -355,7 +355,7 @@ fn test_type_check_assign_int_from_pointer() {
     );
 }
 
-// --- Declaration without initializer (D20) ---
+// --- Declaration without initializer ---
 
 #[test]
 fn test_type_check_decl_without_init_any_type() {

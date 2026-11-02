@@ -48,7 +48,7 @@ pub fn exec_stmt(stmt: &CheckedStmt, env: &mut Environment<Value>) -> ExecResult
         // --- Variable declaration ---
         Statement::Decl { name, init, .. } => {
             // `T x;` reserves the variable now so `&x` and `x = e` work; reading it
-            // before an assignment fails in `read_defined` (D20).
+            // before an assignment fails in `read_defined`.
             let val = match init {
                 Some(init) => eval_expr(init, env)?,
                 None => Value::Undefined,

@@ -112,7 +112,8 @@ pub fn type_check(program: &UncheckedProgram) -> Result<CheckedProgram, TypeErro
     // Clean snapshot: only function bindings, no variable bindings.
     let fn_snapshot = env.snapshot();
 
-    // Rebuilt in source order (D1); struct definitions pass through unchanged for now.
+    // Rebuilt in source order, so structs keep their position relative to functions;
+    // struct definitions pass through unchanged for now.
     let mut items = Vec::new();
     for item in &program.items {
         let checked = match item {
@@ -164,7 +165,7 @@ fn type_check_stmt(
             if env.get(name).is_some() {
                 return Err(TypeError::new(format!("redeclaration of variable: {}", name)));
             }
-            // Without an initializer the variable still has type `ty` (D20): being
+            // Without an initializer the variable still has type `ty`: being
             // undefined is a runtime state, not a different type.
             let init_checked = match init {
                 Some(init) => {

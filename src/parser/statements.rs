@@ -280,7 +280,8 @@ mod tests {
 
     #[test]
     fn test_struct_decl_with_init_is_accepted() {
-        // Decision 18 (no struct-to-struct copy) is enforced by the checker, not here.
+        // Copying a whole struct into another is forbidden, but that is enforced by
+        // the checker, not here.
         assert_eq!(
             statement("struct Pessoa p = q;"),
             Ok((

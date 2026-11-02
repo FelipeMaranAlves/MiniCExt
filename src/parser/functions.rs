@@ -107,7 +107,8 @@ pub fn struct_type_name(input: &str) -> IResult<&str, Type> {
 
 /// Parse any type allowed for a variable declaration:
 /// `struct Name` | `Name` | type_name. The `struct` keyword is optional when using
-/// the type (D21); whether `Name` really is a struct is decided by the checker.
+/// the type, so `Pessoa p;` and `struct Pessoa p;` are the same declaration;
+/// whether `Name` really is a struct is decided by the checker.
 ///
 /// Order matters: `alt` commits to the first success and never retries it, and
 /// `type_name` matches `int` as a prefix of `integer`. The bare identifier is

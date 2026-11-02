@@ -106,7 +106,7 @@ pub enum Value {
     Fn(FnValue),
     /// Pointer: holds the name of the target variable in the environment.
     Ptr(usize),
-    /// Content of a variable declared without initializer and not assigned yet (D20).
+    /// Content of a variable declared without initializer and not assigned yet.
     /// It can be stored and overwritten, but never read: see `read_defined`.
     Undefined,
 }
@@ -158,7 +158,7 @@ impl fmt::Display for RuntimeError {
 
 impl std::error::Error for RuntimeError {}
 
-/// The single gate every read of a stored value goes through (D20): reading
+/// The single gate every read of a stored value goes through: reading
 /// `Undefined` is a runtime error. `what` names the place read, e.g. "variable 'x'".
 pub fn read_defined(value: Value, what: &str) -> Result<Value, RuntimeError> {
     match value {

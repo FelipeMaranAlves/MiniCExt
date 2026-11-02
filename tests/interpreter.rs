@@ -524,7 +524,7 @@ fn test_traditional_stack_and_heap_separation() {
 }
 
 // ---------------------------------------------------------------------------
-// Undefined variables (D20): declared without initializer, read before assigned
+// Undefined variables: declared without initializer, read before assigned
 // ---------------------------------------------------------------------------
 
 fn run_main_env(src: &str) -> Result<Environment<Value>, String> {
