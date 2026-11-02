@@ -522,3 +522,86 @@ fn test_traditional_stack_and_heap_separation() {
         "A mutação de memória foi perdida! A Store foi indevidamente revertida."
     );
 }
+
+// ---------------------------------------------------------------------------
+// Undefined variables (D20): declared without initializer, read before assigned
+// ---------------------------------------------------------------------------
+
+fn run_main_env(src: &str) -> Result<Environment<Value>, String> {
+    let program = checked_program(src)?;
+    let mut env = Environment::new();
+    exec_stmt_sequence(main_body_sequence(&program)?, &mut env)?;
+    Ok(env)
+}
+
+fn assert_read_before_assign(src: &str, what: &str) {
+    let err = run(src).expect_err("reading an undefined value must fail");
+    assert!(
+        err.contains(&format!("{} was read before being assigned", what)),
+        "unexpected error: {}",
+        err
+    );
+}
+
+#[test]
+fn test_undefined_read_is_runtime_error() {
+    assert_read_before_assign("void main() { int x; print(x); }", "variable 'x'");
+}
+
+#[test]
+fn test_undefined_does_not_spread_through_decl() {
+    // Fails at `int y = x;`, so `y` never holds an undefined.
+    assert_read_before_assign("void main() { int x; int y = x; }", "variable 'x'");
+}
+
+#[test]
+fn test_undefined_then_assigned_is_fine() {
+    let env = run_main_env("void main() { int x; x = 1; }").unwrap();
+    assert_eq!(env.get("x"), Some(&Value::Int(1)));
+}
+
+#[test]
+fn test_undefined_every_type_starts_undefined() {
+    let env = run_main_env("void main() { str s; int[] a; int* p; }").unwrap();
+    for name in ["s", "a", "p"] {
+        assert_eq!(env.get(name), Some(&Value::Undefined), "{name}");
+    }
+}
+
+#[test]
+fn test_undefined_address_of_is_allowed() {
+    // Taking the address does not read the value.
+    let env = run_main_env("void main() { int x; int* p = &x; *p = 5; }").unwrap();
+    assert_eq!(env.get("x"), Some(&Value::Int(5)));
+}
+
+#[test]
+fn test_undefined_read_through_pointer_is_error() {
+    assert_read_before_assign(
+        "void main() { int x; int* p = &x; int y = *p; }",
+        "value behind pointer",
+    );
+}
+
+#[test]
+fn test_undefined_index_assign_is_error() {
+    assert_read_before_assign("void main() { int[] a; a[0] = 1; }", "variable 'a'");
+}
+
+#[test]
+fn test_undefined_as_argument_is_error() {
+    assert_read_before_assign(
+        "void f(int a) {} void main() { int x; f(x); }",
+        "variable 'x'",
+    );
+}
+
+#[test]
+fn test_undefined_only_fails_on_executed_path() {
+    // Dynamic check: the read inside the untaken branch never happens.
+    assert!(run("void main() { int x; if false { print(x); } }").is_ok());
+    // Assigned inside a loop, read after it: a static definite-assignment
+    // analysis would reject this; the runtime check accepts it.
+    let src = "void main() { int x; int i = 0; while i < 1 { x = 7; i = i + 1; } print(x); }";
+    assert!(run(src).is_ok(), "{}", run(src).unwrap_err());
+}
