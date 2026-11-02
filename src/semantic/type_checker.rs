@@ -164,21 +164,26 @@ fn type_check_stmt(
             if env.get(name).is_some() {
                 return Err(TypeError::new(format!("redeclaration of variable: {}", name)));
             }
-            let init = init
-                .as_ref()
-                .ok_or_else(|| not_supported_yet("declaration without initializer"))?;
-            let init_checked = type_check_expr_to_typed(init, env)?;
-            if !types_compatible(&init_checked.ty, ty) {
-                return Err(TypeError::new(format!(
-                    "declaration of {}: expected {:?}, got {:?}",
-                    name, ty, init_checked.ty
-                )));
-            }
+            // Without an initializer the variable still has type `ty` (D20): being
+            // undefined is a runtime state, not a different type.
+            let init_checked = match init {
+                Some(init) => {
+                    let checked = type_check_expr_to_typed(init, env)?;
+                    if !types_compatible(&checked.ty, ty) {
+                        return Err(TypeError::new(format!(
+                            "declaration of {}: expected {:?}, got {:?}",
+                            name, ty, checked.ty
+                        )));
+                    }
+                    Some(Box::new(checked))
+                }
+                None => None,
+            };
             env.declare(name.clone(), ty.clone());
             Statement::Decl {
                 name: name.clone(),
                 ty: ty.clone(),
-                init: Some(Box::new(init_checked)),
+                init: init_checked,
             }
         }
         Statement::Assign { target, value } => {
