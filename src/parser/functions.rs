@@ -105,7 +105,20 @@ pub fn struct_type_name(input: &str) -> IResult<&str, Type> {
     )(input)
 }
 
-/// Parse any type allowed for a variable declaration: type_name | struct_type_name.
+/// Parse any type allowed for a variable declaration:
+/// `struct Name` | `Name` | type_name. The `struct` keyword is optional when using
+/// the type (D21); whether `Name` really is a struct is decided by the checker.
+///
+/// Order matters: `alt` commits to the first success and never retries it, and
+/// `type_name` matches `int` as a prefix of `integer`. The bare identifier is
+/// tried first because `identifier` consumes the whole word and rejects reserved
+/// ones (`int`, `str`, ...), which then fall through to `type_name` (`int*`, `int[]`).
 pub fn value_type_name(input: &str) -> IResult<&str, Type> {
-    alt((struct_type_name, type_name))(input)
+    alt((
+        struct_type_name,
+        map(preceded(multispace0, identifier), |name| {
+            Type::Struct(name.to_string())
+        }),
+        type_name,
+    ))(input)
 }
