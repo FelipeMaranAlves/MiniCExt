@@ -35,8 +35,8 @@ fn test_type_check_int_float_coercion() {
     let result = parse_and_type_check("void main() float x = 1 + 3.14;");
     assert!(result.is_ok());
     let prog = result.unwrap();
-    let main_fn = prog.functions.iter().find(|f| f.name == "main").unwrap();
-    if let mini_c::ir::ast::Statement::Decl { ref init, .. } = main_fn.body.stmt {
+    let main_fn = prog.functions().find(|f| f.name == "main").unwrap();
+    if let mini_c::ir::ast::Statement::Decl { init: Some(ref init), .. } = main_fn.body.stmt {
         assert_eq!(init.ty, Type::Float);
     } else {
         panic!("expected Decl");
@@ -244,20 +244,20 @@ fn test_type_check_addr_of_and_deref_types() {
     )
     .expect("pointer decl and deref should type-check");
 
-    let main_fn = prog.functions.iter().find(|f| f.name == "main").unwrap();
+    let main_fn = prog.functions().find(|f| f.name == "main").unwrap();
     let Statement::Block { seq } = &main_fn.body.stmt else {
         panic!("expected block body");
     };
 
     let p_init = match &seq[1].stmt {
-        Statement::Decl { init, .. } => init,
+        Statement::Decl { init: Some(init), .. } => init,
         _ => panic!("expected int* p = &x decl"),
     };
     assert_eq!(p_init.ty, Type::Pointer(Box::new(Type::Int)));
     assert!(matches!(p_init.exp, Expr::AddrOf(_)));
 
     let y_init = match &seq[2].stmt {
-        Statement::Decl { init, .. } => init,
+        Statement::Decl { init: Some(init), .. } => init,
         _ => panic!("expected int y = *p decl"),
     };
     assert_eq!(y_init.ty, Type::Int);
@@ -271,7 +271,7 @@ fn test_type_check_pointer_param_and_deref_assign() {
     )
     .expect("pointer param and assignment through deref");
 
-    let bump = prog.functions.iter().find(|f| f.name == "bump").unwrap();
+    let bump = prog.functions().find(|f| f.name == "bump").unwrap();
     assert_eq!(
         bump.params,
         vec![("p".to_string(), Type::Pointer(Box::new(Type::Int)))]
@@ -285,7 +285,7 @@ fn test_type_check_pointer_return_type() {
     )
     .expect("pointer return");
 
-    let id_fn = prog.functions.iter().find(|f| f.name == "id").unwrap();
+    let id_fn = prog.functions().find(|f| f.name == "id").unwrap();
     assert_eq!(id_fn.return_type, Type::Pointer(Box::new(Type::Int)));
 }
 

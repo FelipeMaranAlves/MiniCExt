@@ -72,7 +72,7 @@ pub fn interpret(program: &CheckedProgram) -> Result<(), RuntimeError> {
     }
 
     // Register user-defined functions as Value::Fn(FnValue::UserDefined) bindings.
-    for fun in &program.functions {
+    for fun in program.functions() {
         env.declare(fun.name.clone(), Value::Fn(FnValue::UserDefined(fun.clone())));
     }
 

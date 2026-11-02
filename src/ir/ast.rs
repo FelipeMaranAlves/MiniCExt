@@ -205,11 +205,16 @@ pub struct Program<Ty> {
 }
 
 impl<Ty> Program<Ty> {
-    pub fn main_function(&self) -> Option<&FunDecl<Ty>> {
-        self.items.iter().find_map(|item| match item {
-            TopLevelItem::Function(function) if function.name == "main" => Some(function),
-            _ => None,
+    /// The function declarations, in source order, skipping struct definitions.
+    pub fn functions(&self) -> impl Iterator<Item = &FunDecl<Ty>> {
+        self.items.iter().filter_map(|item| match item {
+            TopLevelItem::Function(function) => Some(function),
+            TopLevelItem::Struct(_) => None,
         })
+    }
+
+    pub fn main_function(&self) -> Option<&FunDecl<Ty>> {
+        self.functions().find(|function| function.name == "main")
     }
 }
 

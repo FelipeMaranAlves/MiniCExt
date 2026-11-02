@@ -2,7 +2,7 @@
 
 use nom::combinator::all_consuming;
 use std::path::Path;
-use mini_c::ir::ast::{Statement, TopLevelItem, Type, UncheckedFunDecl, UncheckedProgram};
+use mini_c::ir::ast::{Statement, Type, UncheckedFunDecl, UncheckedProgram};
 use mini_c::parser::program;
 
 fn fixtures_dir() -> std::path::PathBuf {
@@ -21,13 +21,7 @@ fn parse_program_file(name: &str) -> Result<UncheckedProgram, nom::Err<nom::erro
 }
 
 fn functions(prog: &UncheckedProgram) -> Vec<&UncheckedFunDecl> {
-    prog.items
-        .iter()
-        .filter_map(|item| match item {
-            TopLevelItem::Function(f) => Some(f),
-            _ => None,
-        })
-        .collect()
+    prog.functions().collect()
 }
 
 #[test]

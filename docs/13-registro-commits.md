@@ -89,3 +89,34 @@ mesmo `postfix`, então as duas aceitam exatamente os mesmos sufixos.
   `program.rs` corrigido **localmente e sem commit**, já que ele é da T2 e ainda
   impede a lib de compilar.
 - `rustfmt --check` limpo nos dois arquivos.
+
+---
+
+## Commit: Entrega 2 — religar checker, interpretador, stdlib e codegen
+
+**Data:** 2026-11-02
+**Arquivos:** `src/lib.rs`, `src/ir/ast.rs`, `src/semantic/type_checker.rs`, `src/interpreter/{mod,exec_stmt,eval_expr}.rs`, `tests/{type_checker,interpreter,program}.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `src/lib.rs` | `semantic`, `interpreter`, `stdlib` e `codegen` voltam a compilar |
+| `Program::functions()` | Itera só as funções de `items`; `main_function()` passa a usá-lo |
+| Checker remonta `items` em ordem | Funções são checadas; structs passam sem mudança (D1) |
+| `Decl` sem inicializador | Erro explícito "not supported yet" no checker e no runtime (liberado na tarefa do undefined) |
+| `Expr::Field` | Erro explícito "not supported yet" no checker e no runtime (tarefa da Pessoa C) |
+| Testes migrados | `prog.functions` → `prog.functions()`; `init` → `Some(init)` |
+
+### Por que
+
+O AST de struct (`items`, `init: Option`) quebrou os módulos da entrega 2, e o
+merge do upstream (ponteiros) trouxe mais código com a API antiga. Esta é a
+base de que as outras tarefas dependem. Os casos ainda não implementados dão
+**erro explícito**, e não `todo!()`: o CLI informa a falha em vez de entrar em
+pânico, e os testes de cada dono mostram o erro mudar para o comportamento certo.
+
+### Verificação
+
+- `cargo test`: todos os alvos verdes (lib, parser, program, type_checker, interpreter, stdlib, tac_gen).
+- `shelltest tests/cli/`: 12/12.
