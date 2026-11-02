@@ -375,3 +375,56 @@ campos) quando o tipo é struct, para que `p.idade = 3` tenha onde gravar.
 ### Verificação
 
 - `cargo test` (interpreter: 40) e `shelltest tests/cli/`: 14/14.
+
+---
+
+## Commit: AST — `Type::Struct` vira `Type::UserDefined`
+
+**Data:** 2026-11-02
+**Arquivos:** `src/ir/ast.rs`, `src/parser/functions.rs`, `src/parser/{statements,structs}.rs` (testes), `docs/01-language.md`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `Type::Struct(String)` → `Type::UserDefined(String)` | O tipo de `Pessoa p;` passa a dizer "um tipo criado pelo programa, chamado `Pessoa`", e não "um struct chamado `Pessoa`" |
+| `struct Pessoa p;` e `Pessoa p;` | Os dois geram `Type::UserDefined("Pessoa")`; a palavra `struct` no uso continua opcional |
+| `docs/01-language.md` | O struct é apresentado como um tipo definido pelo usuário |
+
+### Por que
+
+**Sugestão do professor**: representar o tipo como *user-defined type* (tipo
+definido pelo usuário), o mesmo termo do enunciado ("user-defined record types").
+
+1. **O AST não deve afirmar o que o parser não sabe.** Desde que o `struct`
+   ficou opcional no uso, o parser aceita qualquer identificador como tipo.
+   Em `integer p;`, o AST dizia `Type::Struct("integer")`, afirmando que é um
+   struct sem ter como saber. `UserDefined` diz só o que o parser sabe: é um
+   nome. Se ele existe, e **que tipo de definição** é, quem decide é o checker,
+   consultando a tabela de tipos (nome → definição) da tarefa do registro de
+   structs.
+2. **O MiniC vai evoluir além do struct.** Com `Struct(String)`, cada novo tipo
+   do usuário (enum, apelido de tipo...) exigiria uma variante nova em `Type`,
+   e o parser teria que decidir qual delas usar só olhando um nome, o que ele
+   não consegue. Com `UserDefined(String)`, um tipo novo vira só mais um tipo
+   de entrada na tabela do checker; `Type`, o parser e todo `match` sobre
+   `Type` ficam como estão.
+
+**Custo:** quem lê `Type::UserDefined` não sabe, só pelo AST, que é um struct;
+precisa olhar a tabela de definições. Também se perde uma informação: com
+`struct Pessoa p;` explícito, o programador disse que é um struct, e hoje isso
+não chega ao checker. Se um dia houver enums, `struct Direcao d;` (com `Direcao`
+sendo enum) não será recusado por esse motivo, a menos que o AST volte a guardar
+se a palavra `struct` foi escrita.
+
+**Por que `UserDefined` e não `Named`:** "named type" (tipo nomeado) é o termo
+mais comum na literatura de compiladores, mas não é uma expressão do dia a
+dia da equipe. `UserDefined` é o termo do professor e do enunciado e descreve bem o que o
+tipo é: criado pelo programa, e não embutido na linguagem.
+
+**Momento:** a mudança entra antes da tarefa do registro de structs, para que a
+tabela de definições e as mensagens de erro já nasçam com o nome novo.
+
+### Verificação
+
+- `cargo test` e `shelltest tests/cli/` (14/14) verdes; nenhum comportamento muda.

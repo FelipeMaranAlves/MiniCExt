@@ -94,21 +94,23 @@ pub fn fun_decl(input: &str) -> IResult<&str, UncheckedFunDecl> {
     ))
 }
 
-/// Parse a struct type: `struct Name`.
+/// Parse an explicit struct type use: `struct Name`. It yields the same
+/// `Type::UserDefined(Name)` as a bare `Name`; the keyword is optional.
 pub fn struct_type_name(input: &str) -> IResult<&str, Type> {
     map(
         tuple((
             preceded(multispace0, tag("struct")),
             preceded(multispace1, identifier),
         )),
-        |(_, name)| Type::Struct(name.to_string()),
+        |(_, name)| Type::UserDefined(name.to_string()),
     )(input)
 }
 
 /// Parse any type allowed for a variable declaration:
 /// `struct Name` | `Name` | type_name. The `struct` keyword is optional when using
-/// the type, so `Pessoa p;` and `struct Pessoa p;` are the same declaration;
-/// whether `Name` really is a struct is decided by the checker.
+/// the type, so `Pessoa p;` and `struct Pessoa p;` are the same declaration.
+/// Both become `Type::UserDefined(Name)`: whether `Name` exists, and what kind
+/// of type it is, is decided by the checker.
 ///
 /// Order matters: `alt` commits to the first success and never retries it, and
 /// `type_name` matches `int` as a prefix of `integer`. The bare identifier is
@@ -118,7 +120,7 @@ pub fn value_type_name(input: &str) -> IResult<&str, Type> {
     alt((
         struct_type_name,
         map(preceded(multispace0, identifier), |name| {
-            Type::Struct(name.to_string())
+            Type::UserDefined(name.to_string())
         }),
         type_name,
     ))(input)

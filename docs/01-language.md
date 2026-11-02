@@ -76,7 +76,9 @@ names and `true`/`false` are reserved and cannot be used as names.
 
 ### Structs
 
-A struct is defined at top level; the `;` after `}` is optional:
+A struct is a **user-defined type**: a type created by the program, as
+opposed to the built-in ones (`int`, `str`, ...). It is defined at top
+level; the `;` after `}` is optional:
 
 ```c
 struct Pessoa { int idade; str nome; }

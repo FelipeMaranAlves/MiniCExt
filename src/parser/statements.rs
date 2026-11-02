@@ -249,7 +249,7 @@ mod tests {
     fn test_struct_decl_without_init() {
         assert_eq!(
             statement("struct Pessoa p;"),
-            Ok(("", decl("p", Type::Struct("Pessoa".to_string()), None)))
+            Ok(("", decl("p", Type::UserDefined("Pessoa".to_string()), None)))
         );
     }
 
@@ -286,7 +286,7 @@ mod tests {
             statement("struct Pessoa p = q;"),
             Ok((
                 "",
-                decl("p", Type::Struct("Pessoa".to_string()), Some(ident("q")))
+                decl("p", Type::UserDefined("Pessoa".to_string()), Some(ident("q")))
             ))
         );
     }
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_struct_keyword_is_optional_in_decl() {
-        let pessoa = || Type::Struct("Pessoa".to_string());
+        let pessoa = || Type::UserDefined("Pessoa".to_string());
         assert_eq!(statement("Pessoa p;"), Ok(("", decl("p", pessoa(), None))));
         assert_eq!(
             statement("Pessoa p = q;"),
@@ -372,7 +372,7 @@ mod tests {
         // `integer` is a (struct) type name, not `int` followed by `eger`.
         assert_eq!(
             statement("integer p;"),
-            Ok(("", decl("p", Type::Struct("integer".to_string()), None)))
+            Ok(("", decl("p", Type::UserDefined("integer".to_string()), None)))
         );
     }
 

@@ -78,7 +78,7 @@ mod tests {
     fn test_struct_type_name() {
         assert_eq!(
             struct_type_name("struct Pessoa"),
-            Ok(("", Type::Struct("Pessoa".to_string())))
+            Ok(("", Type::UserDefined("Pessoa".to_string())))
         );
         assert!(struct_type_name("int").is_err());
     }
