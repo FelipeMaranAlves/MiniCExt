@@ -229,3 +229,38 @@ definições de struct e funções, e nenhuma delas começa com `;`.
 ### Verificação
 
 - `cargo test` (lib: 23) e `shelltest tests/cli/` verdes.
+
+---
+
+## Commit: CLI — erro quando sobra entrada depois do programa
+
+**Data:** 2026-11-02
+**Arquivos:** `src/main.rs`, `tests/cli/check.test`, `tests/fixtures/cli_trailing_garbage.minic`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `main.rs` | Usa `all_consuming(terminated(program, multispace0))`: o arquivo inteiro precisa ser consumido (espaço no fim é tolerado) |
+| `check.test` | `invalid_syntax.minic` passa a dar **Parse error** (antes dava "Type error: program must have a main function") |
+| Fixture nova | `main` válido seguido de `struct P { int x;` sem fechar |
+
+### Por que
+
+Questão técnica 1 do doc 11. O `program` é um `many0`: ele para no primeiro item
+que não reconhece e devolve o resto, que o CLI descartava. Antes desta correção,
+a fixture nova **imprimia `1` e saía com código 0**: o struct malformado sumia em
+silêncio. Um erro de sintaxe tem que ser reportado como erro de sintaxe, e não
+reaparecer mais tarde como outro erro (ou não reaparecer).
+
+**Escopo: correção da linguagem como um todo, e não parte da extensão de
+struct.** O bug já existia no MiniC base e continua na `main` do repositório do
+professor: o parser de programa original (`many0(fun_decl)`) também parava no
+primeiro item que não reconhecia, e o CLI descartava o resto do mesmo jeito. A
+correção entra aqui porque o problema apareceu ao testar definições de struct
+(um `struct P { int x;` sem fechar no fim do arquivo sumia sem erro) e porque
+estava na lista de pendências do parser. Pode ser proposta também ao upstream.
+
+### Verificação
+
+- `cargo test` verde; `shelltest tests/cli/`: 13/13.
