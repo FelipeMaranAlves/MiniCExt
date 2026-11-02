@@ -204,3 +204,28 @@ aceita identificador.
 ### Verificação
 
 - `cargo test` (lib: 22) e `shelltest tests/cli/` verdes.
+
+---
+
+## Commit: Parser — `;` opcional depois da definição de struct (D22)
+
+**Data:** 2026-11-02
+**Arquivo:** `src/parser/structs.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `struct_decl` | O `;` depois do `}` passa a ser `opt(...)` |
+| Teste | `struct Point { int x; }` e `struct Point { int x; };` geram o mesmo nó |
+
+### Por que
+
+D22: no C, o `;` existe porque depois do `}` pode vir uma lista de variáveis
+(`struct P {...} a, b;`). O MiniC não tem essa forma, então o `;` não separa
+nada. Aceitar os dois jeitos não cria ambiguidade, porque no topo só existem
+definições de struct e funções, e nenhuma delas começa com `;`.
+
+### Verificação
+
+- `cargo test` (lib: 23) e `shelltest tests/cli/` verdes.
