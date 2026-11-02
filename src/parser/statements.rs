@@ -176,11 +176,22 @@ fn while_statement(input: &str) -> IResult<&str, UncheckedStmt> {
 /// Parse an lvalue: identifier followed by zero or more `[ expr ]` / `.field` suffixes.
 /// Starts from an identifier, not an atom, so literals and calls are never targets.
 fn lvalue(input: &str) -> IResult<&str, UncheckedExpr> {
-    let (rest, id) = preceded(multispace0, identifier)(input)?;
-    let base = ExprD {
-        exp: Expr::Ident(id.to_string()),
-        ty: (),
-    };
+    let (rest, base) = preceded(
+        multispace0,
+        alt((
+            map(preceded(tag("*"), identifier), |id| ExprD {
+                exp: Expr::Deref(Box::new(ExprD {
+                    exp: Expr::Ident(id.to_string()),
+                    ty: (),
+                })),
+                ty: (),
+            }),
+            map(identifier, |id| ExprD {
+                exp: Expr::Ident(id.to_string()),
+                ty: (),
+            }),
+        )),
+    )(input)?;
     postfix(rest, base)
 }
 
