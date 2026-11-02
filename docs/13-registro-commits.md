@@ -146,3 +146,29 @@ outras tarefas só adicionam braços de `match`, sem mexer no AST.
 ### Verificação
 
 - `cargo test` e `shelltest tests/cli/` verdes (nada muda de comportamento).
+
+---
+
+## Commit: Parser — palavras-chave reservadas
+
+**Data:** 2026-11-02
+**Arquivos:** `src/parser/identifiers.rs`, `tests/parser.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `RESERVED` | Passa a incluir `struct`, `if`, `else`, `while`, `and`, `or` |
+| Testes | Palavras-chave rejeitadas como identificador; prefixos (`structure`, `iffy`, `android`) continuam válidos; `int if = 1;` é erro de sintaxe |
+
+### Por que
+
+Pré-requisito da D21 (próximo commit): quando um identificador puder ser o nome
+de um tipo struct, `if x;` seria lido como "declarar `x` do tipo `if`". Antes,
+as palavras-chave só eram reconhecidas pelo `tag` de cada comando, e nada
+impedia usá-las como nome de variável (`int struct = 1;` passava). Reservar só
+a palavra **exata** mantém nomes como `structure` válidos.
+
+### Verificação
+
+- `cargo test` (parser: 66) e `shelltest tests/cli/` verdes.

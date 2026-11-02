@@ -111,6 +111,24 @@ fn test_identifier_reject_reserved() {
 }
 
 #[test]
+fn test_identifier_reject_keywords() {
+    for kw in ["struct", "if", "else", "while", "and", "or", "return"] {
+        assert!(identifier(kw).is_err(), "{kw} should be reserved");
+    }
+    // Only exact matches are reserved, not prefixes.
+    for id in ["structure", "iffy", "elsewhere", "android", "order"] {
+        assert_eq!(identifier(id), Ok(("", id)));
+    }
+}
+
+#[test]
+fn test_keyword_as_variable_name_is_syntax_error() {
+    for src in ["int if = 1;", "int struct = 1;", "bool or = true;"] {
+        assert!(all_consuming(statement)(src).is_err(), "{src} should not parse");
+    }
+}
+
+#[test]
 fn test_identifier_accept_true_prefix() {
     assert_eq!(identifier("tru"), Ok(("", "tru")));
     assert_eq!(identifier("truex"), Ok(("", "truex")));
