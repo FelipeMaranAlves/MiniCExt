@@ -5,7 +5,8 @@
 //! This file defines every node type that can appear in a MiniC program:
 //!
 //! * [`Type`] — the MiniC type system (`int`, `float`, `bool`, `str`, arrays,
-//!   functions, and the special `Any` used for polymorphic stdlib parameters).
+//!   functions, pointers, types defined by the program, and the special `Any`
+//!   used for polymorphic stdlib parameters).
 //! * [`Literal`] — a constant value written directly in source code.
 //! * [`Expr`] / [`ExprD`] — expressions (arithmetic, comparisons, calls, …).
 //! * [`Statement`] / [`StatementD`] — statements (declarations, assignments,
@@ -56,8 +57,12 @@ pub enum Type {
     Float,
     Bool,
     Str,
-    /// a user-defined struct type, identified by its declared name.
-    Struct(String),
+    /// A type defined by the program itself, referred to by its name (`Pessoa`).
+    /// The parser only knows it is a name; the type checker looks the name up in
+    /// its table of definitions to learn what it is. Today the only kind of
+    /// definition is a struct, but the variant is not tied to it, so new kinds
+    /// (enums, aliases) only add entries to that table, not new `Type` variants.
+    UserDefined(String),
     Array(Box<Type>),
     Fun(Vec<Type>, Box<Type>),
     Pointer(Box<Type>),
@@ -119,6 +124,12 @@ pub enum Expr<Ty> {
     Field {
         base: Box<ExprD<Ty>>,
         field: String,
+    },
+    /// struct literal: `Name { field: expr, ... }`.
+    /// A list (not a map) keeps source order and lets the checker see repeated fields.
+    StructLit {
+        name: String,
+        fields: Vec<(String, ExprD<Ty>)>,
     },
     /// Pointer operations
     AddrOf(Box<ExprD<Ty>>),
@@ -205,11 +216,16 @@ pub struct Program<Ty> {
 }
 
 impl<Ty> Program<Ty> {
-    pub fn main_function(&self) -> Option<&FunDecl<Ty>> {
-        self.items.iter().find_map(|item| match item {
-            TopLevelItem::Function(function) if function.name == "main" => Some(function),
-            _ => None,
+    /// The function declarations, in source order, skipping struct definitions.
+    pub fn functions(&self) -> impl Iterator<Item = &FunDecl<Ty>> {
+        self.items.iter().filter_map(|item| match item {
+            TopLevelItem::Function(function) => Some(function),
+            TopLevelItem::Struct(_) => None,
         })
+    }
+
+    pub fn main_function(&self) -> Option<&FunDecl<Ty>> {
+        self.functions().find(|function| function.name == "main")
     }
 }
 

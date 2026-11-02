@@ -27,12 +27,17 @@ use nom::{
     IResult,
 };
 
-/// Reserved words: boolean literals and type names.
-const RESERVED: &[&str] = &["true", "false", "int", "float", "bool", "str", "void", "return"];
+/// Reserved words: boolean literals, type names and keywords.
+/// Keywords must be reserved because a bare identifier can stand for a struct
+/// type (`Pessoa p;`): without this, `if x;` would parse as "declare `x` of type `if`".
+const RESERVED: &[&str] = &[
+    "true", "false", "int", "float", "bool", "str", "void", "return", "struct", "if", "else",
+    "while", "and", "or",
+];
 
 /// Parse an identifier (variable name).
 /// Must start with letter or underscore; subsequent chars may be letter, digit, or underscore.
-/// Rejects reserved words (true, false, int, float, bool, str, void).
+/// Rejects reserved words (see `RESERVED`).
 pub fn identifier(input: &str) -> IResult<&str, &str> {
     let id_parser = recognize(pair(
         take_while1(|c: char| c.is_alphabetic() || c == '_'),

@@ -47,8 +47,7 @@ int add(int x, int y) {
 
 ## Variables
 
-Variables must be **declared and initialised** in one step using a type
-annotation:
+Variables are declared with a type annotation, with or without an initialiser:
 
 ```c
 int x = 42
@@ -56,9 +55,37 @@ float pi = 3.14159
 bool flag = true
 str name = "Alice"
 int[] nums = [1, 2, 3]
+int count;
 ```
 
-There are no uninitialised variables in MiniC.
+A variable declared without an initialiser is **undefined** until it is
+assigned. Assigning to it (directly or through a pointer, `*p = 1` with
+`p = &x`) defines it. **Reading** it before that is a runtime error:
+
+```c
+int x;
+print(x);        // runtime error: variable 'x' was read before being assigned
+x = 1;
+print(x);        // 1
+```
+
+The check is dynamic: only reads that actually execute fail.
+
+Keywords (`if`, `else`, `while`, `return`, `and`, `or`, `struct`), type
+names and `true`/`false` are reserved and cannot be used as names.
+
+### Structs
+
+A struct is a **user-defined type**: a type created by the program, as
+opposed to the built-in ones (`int`, `str`, ...). It is defined at top
+level; the `;` after `}` is optional:
+
+```c
+struct Pessoa { int idade; str nome; }
+```
+
+When declaring a variable, the `struct` keyword is optional:
+`Pessoa p;` and `struct Pessoa p;` are the same declaration.
 
 ---
 

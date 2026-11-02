@@ -13,7 +13,7 @@ use crate::parser::identifiers::identifier;
 use nom::{
     bytes::complete::tag,
     character::complete::{char, multispace0, multispace1},
-    combinator::{map, verify},
+    combinator::{map, opt, verify},
     multi::many1,
     sequence::{delimited, preceded, tuple},
     IResult,
@@ -21,9 +21,9 @@ use nom::{
 
 /// Parse a single struct field: `Type name;`
 /// 
-/// Rejects `void` as a field type (Decision 5).
+/// Rejects `void` as a field type: a field holds a value, and `void` means no value.
 /// Nested structs are implicitly rejected because `type_name` is used
-/// instead of `value_type_name` (Decision 8).
+/// instead of `value_type_name`: a struct cannot be a field of another struct.
 fn struct_field(input: &str) -> IResult<&str, StructField> {
     map(
         tuple((
@@ -42,9 +42,10 @@ fn struct_field(input: &str) -> IResult<&str, StructField> {
     )(input)
 }
 
-/// Parse a complete struct declaration: `struct Name { Type field; ... };`
+/// Parse a complete struct declaration: `struct Name { Type field; ... }` with an
+/// optional trailing `;`.
 /// 
-/// Requires at least one field (Decision 9).
+/// Requires at least one field: an empty struct has no data to represent.
 pub fn struct_decl(input: &str) -> IResult<&str, StructDecl> {
     let (rest, _) = preceded(multispace0, tag("struct"))(input)?;
     let (rest, name) = preceded(multispace1, identifier)(rest)?;
@@ -54,7 +55,9 @@ pub fn struct_decl(input: &str) -> IResult<&str, StructDecl> {
         many1(struct_field),
         preceded(multispace0, char('}')),
     )(rest)?;
-    let (rest, _) = preceded(multispace0, char(';'))(rest)?;
+    // The trailing `;` is optional: MiniC has no `struct P { ... } a, b;` form,
+    // so after `}` there is nothing for it to separate.
+    let (rest, _) = opt(preceded(multispace0, char(';')))(rest)?;
 
     Ok((
         rest,
@@ -75,7 +78,7 @@ mod tests {
     fn test_struct_type_name() {
         assert_eq!(
             struct_type_name("struct Pessoa"),
-            Ok(("", Type::Struct("Pessoa".to_string())))
+            Ok(("", Type::UserDefined("Pessoa".to_string())))
         );
         assert!(struct_type_name("int").is_err());
     }
@@ -117,22 +120,30 @@ mod tests {
     }
 
     #[test]
+    fn test_struct_decl_trailing_semicolon_is_optional() {
+        let with = struct_decl("struct Point { int x; };");
+        let without = struct_decl("struct Point { int x; }");
+        assert!(matches!(with, Ok(("", _))));
+        assert_eq!(with, without);
+    }
+
+    #[test]
     fn test_struct_decl_empty_fails() {
-        // Structs must have at least one field (Decision 9)
+        // Structs must have at least one field
         let input = "struct Empty {};";
         assert!(struct_decl(input).is_err());
     }
 
     #[test]
     fn test_struct_decl_void_field_fails() {
-        // Struct fields cannot be of type void (Decision 5)
+        // Struct fields cannot be of type void
         let input = "struct Point { void x; };";
         assert!(struct_decl(input).is_err());
     }
     
     #[test]
     fn test_struct_decl_nested_struct_field_fails() {
-        // Struct fields cannot be of type struct (Decision 8)
+        // Struct fields cannot be of type struct (no nested structs)
         let input = "struct Point { struct Other o; };";
         assert!(struct_decl(input).is_err());
     }

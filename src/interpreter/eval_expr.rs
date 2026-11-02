@@ -43,17 +43,20 @@ use crate::environment::Environment;
 use crate::ir::ast::{CheckedExpr, Expr, Literal};
 
 use super::exec_stmt::exec_stmt;
-use super::value::{FnValue, RuntimeError, Value};
+use super::value::{read_defined, FnValue, RuntimeError, Value};
 
 /// Evaluate a checked expression to a runtime value.
 pub fn eval_expr(expr: &CheckedExpr, env: &mut Environment<Value>) -> Result<Value, RuntimeError> {
     match &expr.exp {
         Expr::Literal(lit) => Ok(eval_literal(lit)),
 
-        Expr::Ident(name) => env
-            .get(name)
-            .cloned()
-            .ok_or_else(|| RuntimeError::new(format!("undefined variable '{}'", name))),
+        Expr::Ident(name) => {
+            let value = env
+                .get(name)
+                .cloned()
+                .ok_or_else(|| RuntimeError::new(format!("undefined variable '{}'", name)))?;
+            read_defined(value, &format!("variable '{}'", name))
+        }
 
         Expr::Neg(inner) => match eval_expr(inner, env)? {
             Value::Int(n) => Ok(Value::Int(-n)),
@@ -149,6 +152,8 @@ pub fn eval_expr(expr: &CheckedExpr, env: &mut Environment<Value>) -> Result<Val
         }
         Expr::AddrOf(elem) => eval_addr_of(elem, env),
         Expr::Deref(elem) => eval_deref(elem, env),
+        Expr::Field { .. } => Err(RuntimeError::new("struct field access is not supported yet")),
+        Expr::StructLit { .. } => Err(RuntimeError::new("struct literal is not supported yet")),
     }
 }
 
@@ -168,9 +173,10 @@ fn eval_addr_of(elem: &CheckedExpr, env: &Environment<Value>) -> Result<Value, R
 fn eval_deref(elem: &CheckedExpr, env: &mut Environment<Value>) -> Result<Value, RuntimeError> {
     let ptr_val = eval_expr(elem, env)?;
     if let Value::Ptr(addr) = ptr_val {
-        env.read_store(addr).cloned().ok_or_else(|| {
+        let value = env.read_store(addr).cloned().ok_or_else(|| {
             RuntimeError::new(format!("dereference of invalid address '{}'", addr))
-        })
+        })?;
+        read_defined(value, "value behind pointer")
     } else {
         Err(RuntimeError::new("cannot dereference non-pointer value"))
     }

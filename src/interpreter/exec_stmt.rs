@@ -37,7 +37,7 @@ use crate::environment::Environment;
 use crate::ir::ast::{CheckedExpr, CheckedStmt, Expr, Statement};
 
 use super::eval_expr::{eval_call, eval_expr};
-use super::value::{RuntimeError, Value};
+use super::value::{read_defined, RuntimeError, Value};
 
 /// `None` = normal fall-through; `Some(v)` = early return with value.
 pub type ExecResult = Result<Option<Value>, RuntimeError>;
@@ -47,7 +47,12 @@ pub fn exec_stmt(stmt: &CheckedStmt, env: &mut Environment<Value>) -> ExecResult
     match &stmt.stmt {
         // --- Variable declaration ---
         Statement::Decl { name, init, .. } => {
-            let val = eval_expr(init, env)?;
+            // `T x;` reserves the variable now so `&x` and `x = e` work; reading it
+            // before an assignment fails in `read_defined`.
+            let val = match init {
+                Some(init) => eval_expr(init, env)?,
+                None => Value::Undefined,
+            };
             env.declare(name.clone(), val);
             Ok(None)
         }
@@ -189,6 +194,7 @@ fn assign_index(
                 .get(name)
                 .cloned()
                 .ok_or_else(|| RuntimeError::new(format!("undefined variable '{}'", name)))?;
+            let arr = read_defined(arr, &format!("variable '{}'", name))?;
             match arr {
                 Value::Array(mut elems) => {
                     if idx >= elems.len() {
@@ -226,6 +232,7 @@ fn assign_index(
                 .get(&outer_name)
                 .cloned()
                 .ok_or_else(|| RuntimeError::new(format!("undefined variable '{}'", outer_name)))?;
+            let outer = read_defined(outer, &format!("variable '{}'", outer_name))?;
             match outer {
                 Value::Array(mut outer_elems) => {
                     if inner_idx >= outer_elems.len() {

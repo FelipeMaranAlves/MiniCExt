@@ -1,6 +1,7 @@
 use std::{env, fs, process};
 
 use mini_c::{interpreter::interpret, parser::program, semantic::type_check};
+use nom::{character::complete::multispace0, combinator::all_consuming, sequence::terminated};
 
 fn usage() -> ! {
     eprintln!("Usage: minic --check <file.minic>");
@@ -28,8 +29,9 @@ fn main() {
         }
     };
 
-    // Task 2.1 / 3.1: parse
-    let unchecked = match program(&source) {
+    // Task 2.1 / 3.1: parse. The whole file must be consumed: otherwise a
+    // malformed top-level item after valid ones would be silently dropped.
+    let unchecked = match all_consuming(terminated(program, multispace0))(&source) {
         Ok((_, prog)) => prog,
         Err(e) => {
             eprintln!("Parse error: {:?}", e);

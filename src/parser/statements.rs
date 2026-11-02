@@ -249,7 +249,7 @@ mod tests {
     fn test_struct_decl_without_init() {
         assert_eq!(
             statement("struct Pessoa p;"),
-            Ok(("", decl("p", Type::Struct("Pessoa".to_string()), None)))
+            Ok(("", decl("p", Type::UserDefined("Pessoa".to_string()), None)))
         );
     }
 
@@ -280,12 +280,13 @@ mod tests {
 
     #[test]
     fn test_struct_decl_with_init_is_accepted() {
-        // Decision 18 (no struct-to-struct copy) is enforced by the checker, not here.
+        // Copying a whole struct into another is forbidden, but that is enforced by
+        // the checker, not here.
         assert_eq!(
             statement("struct Pessoa p = q;"),
             Ok((
                 "",
-                decl("p", Type::Struct("Pessoa".to_string()), Some(ident("q")))
+                decl("p", Type::UserDefined("Pessoa".to_string()), Some(ident("q")))
             ))
         );
     }
@@ -358,6 +359,48 @@ mod tests {
                 )
             ))
         );
+    }
+
+    #[test]
+    fn test_struct_keyword_is_optional_in_decl() {
+        let pessoa = || Type::UserDefined("Pessoa".to_string());
+        assert_eq!(statement("Pessoa p;"), Ok(("", decl("p", pessoa(), None))));
+        assert_eq!(
+            statement("Pessoa p = q;"),
+            Ok(("", decl("p", pessoa(), Some(ident("q")))))
+        );
+        // `integer` is a (struct) type name, not `int` followed by `eger`.
+        assert_eq!(
+            statement("integer p;"),
+            Ok(("", decl("p", Type::UserDefined("integer".to_string()), None)))
+        );
+    }
+
+    #[test]
+    fn test_builtin_types_still_win_over_identifier() {
+        let cases = [
+            ("int x;", Type::Int),
+            ("int* p;", Type::Pointer(Box::new(Type::Int))),
+            ("str[] s;", Type::Array(Box::new(Type::Str))),
+        ];
+        for (src, ty) in cases {
+            let name = src.split([' ', ';']).nth(1).unwrap();
+            assert_eq!(statement(src), Ok(("", decl(name, ty, None))), "{src}");
+        }
+    }
+
+    #[test]
+    fn test_ident_led_statements_are_not_decls() {
+        let one = || e(Expr::Literal(Literal::Int(1)));
+        assert_eq!(statement("x = 1;"), Ok(("", assign(ident("x"), one()))));
+        assert_eq!(
+            statement("p.idade = 1;"),
+            Ok(("", assign(field(ident("p"), "idade"), one())))
+        );
+        assert!(matches!(
+            statement("print(x);"),
+            Ok(("", StatementD { stmt: Statement::Call { .. }, .. }))
+        ));
     }
 
     #[test]
