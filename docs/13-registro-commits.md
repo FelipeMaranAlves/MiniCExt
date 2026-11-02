@@ -172,3 +172,35 @@ a palavra **exata** mantém nomes como `structure` válidos.
 ### Verificação
 
 - `cargo test` (parser: 66) e `shelltest tests/cli/` verdes.
+
+---
+
+## Commit: Parser — `struct` opcional ao usar o tipo (D21)
+
+**Data:** 2026-11-02
+**Arquivos:** `src/parser/functions.rs`, `src/parser/statements.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `value_type_name` | `alt((struct Nome, Nome, type_name))`: identificador solto vira `Type::Struct(Nome)` |
+| Testes | `Pessoa p;` ≡ `struct Pessoa p;`; `integer p;`; `int x;`, `int* p;`, `str[] s;` continuam tipos embutidos; `x = 1;`, `p.idade = 1;` e `print(x);` não viram declaração |
+
+### Por que
+
+D21: o professor pediu menos verbosidade que o C, e o enunciado já escreve
+`Point p`. O parser agora só reconhece a **forma** "tipo seguido de nome"; quem
+confirma que `Pessoa` é um struct definido é o checker (Pessoa B).
+
+A **ordem das alternativas** é a decisão técnica: o `alt` do nom é uma escolha
+ordenada (PEG) e não volta atrás depois de um sucesso. Com `type_name` antes,
+`integer p;` casaria `int` e deixaria `eger p;`, e a declaração inteira
+falharia. O identificador vem antes porque consome a palavra inteira e rejeita
+as reservadas (`int`, `str`, ...), que então caem em `type_name` (`int*`, `int[]`).
+A D15 continua valendo: parâmetros, retorno e campos usam `type_name`, que não
+aceita identificador.
+
+### Verificação
+
+- `cargo test` (lib: 22) e `shelltest tests/cli/` verdes.
