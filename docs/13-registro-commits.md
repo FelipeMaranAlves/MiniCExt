@@ -428,3 +428,48 @@ tabela de definições e as mensagens de erro já nasçam com o nome novo.
 ### Verificação
 
 - `cargo test` e `shelltest tests/cli/` (14/14) verdes; nenhum comportamento muda.
+
+---
+
+## Commit: Checker e Interpretador — Registro de structs, tipagem nominal e proibições de struct inteiro
+
+**Data:** 2026-11-09  
+**Arquivos:** `src/semantic/type_checker.rs`, `src/semantic/mod.rs`, `src/interpreter/value.rs`, `src/interpreter/exec_stmt.rs`, `tests/type_checker.rs`, `tests/interpreter.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `structs: HashMap<String, StructDecl>` | Catálogo de tipos de struct preenchido e verificado em ordem de declaração no programa |
+| `lookup_struct` | Função utilitária para consultar a definição de um struct pelo nome ou emitir erro de tipo |
+| Validações de struct | Rejeita struct com nome duplicado, colisão de identificador com função, campos com nomes duplicados, campos de tipo `void` e campos aninhados |
+| Funções sem struct em assinatura | Proíbe funções de terem parâmetros ou tipo de retorno com tipo struct |
+| Validação em declaração local | Tipo declarado pelo usuário deve existir no catálogo; nome de variável local não pode colidir com struct |
+| Tipagem nominal | Dois `Type::UserDefined` só são compatíveis se tiverem exatamente o mesmo nome (TAPL §19.3); structs não são compatíveis com `Type::Any` |
+| Proibições de struct inteiro | Bloqueia cópia em declaração (`Point b = a;`), atribuição completa (`a = b;`), comparações (`==`, `!=`), literais de array (`[p]`) e passagem de struct para funções (`print(p)`) |
+| `Value::Struct(HashMap<String, Value>)` | Nova variante de valor no interpretador para instâncias de structs |
+| Inicialização no interpretador | Declaração sem inicializador de tipo `UserDefined` instancia struct com mapa de campos vazio |
+| Testes automatizados | 15 novos testes no type checker e 1 novo teste no interpretador cobrindo todas as novas regras |
+
+### Por que
+
+**Declaração antes do uso (ordem textual única):** O compilador do MiniC processa as definições em um único passo sequencial. O catálogo de structs é populado na ordem em que aparecem no código. O uso de um tipo antes de sua declaração (ou a declaração de structs recursivos/aninhados) é rejeitado com erro de tipo não definido (`undefined type`).
+
+**Espaço de nomes compartilhado:** Structs, funções e variáveis locais compartilham o mesmo espaço conceitual de identificadores. Evita-se assim ambiguidade entre invocar uma função ou instanciar/usar um tipo de mesmo nome no mesmo escopo.
+
+**Tipagem nominal (TAPL §19.3):** Adota-se estritamente tipagem nominal para `Type::UserDefined`: dois structs são tipos distintos mesmo que possuam campos idênticos em nome e tipo. Além disso, structs não casam com `Type::Any`, impedindo que funções polimórficas built-in (como `print`) aceitem structs diretamente.
+
+**Proibições de operações em struct inteiro:** O modelo do MiniC não implementa cópia profunda (deep copy) nem comparação campo a campo automática de registros. Para evitar comportamentos indefinidos ou cópias parciais de estado em memória:
+- Atribuição de struct inteiro (`a = b;` ou `Point b = a;`) é proibida;
+- Comparações (`a == b`, `a != b`) são proibidas;
+- Literais ou arrays de structs são proibidos;
+- Passagem de structs inteiros como argumentos ou retornos de funções é rejeitada no checker.
+A manipulação deve ocorrer exclusivamente campo a campo (ou futuramente via ponteiros).
+
+**Inicialização com mapa vazio no runtime:** Conforme alinhado no commit do valor `Undefined`, um campo de struct não inicializado é representado pela sua ausência no mapa interno do `Value::Struct`. Ao executar uma declaração de struct sem inicializador (`Point p;`), o interpretador cria um `Value::Struct(HashMap::new())`. Quando o acesso a campo for avaliado, a ausência de uma chave resultará na chamada a `read_defined(Value::Undefined, "field 'p.campo'")`, garantindo detecção precisa de leituras não inicializadas sem sobrecarregar o interpretador com schemas estáticos de tipos.
+
+### Verificação
+
+- `cargo check --tests` e `cargo check --lib` passando com 0 erros.
+- Cobertura completa de cenários válidos e inválidos em `tests/type_checker.rs` e `tests/interpreter.rs`.
+

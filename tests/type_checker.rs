@@ -387,3 +387,160 @@ fn test_type_check_decl_without_init_keeps_none() {
     let main_fn = prog.main_function().unwrap();
     assert!(matches!(main_fn.body.stmt, Statement::Decl { init: None, .. }));
 }
+
+// --- Struct ---
+
+#[test]
+fn test_type_check_struct_valid_definition() {
+    let src = "struct Point { int x; int y; }; void main() {}";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_duplicate_definition_fails() {
+    let src = "struct Point { int x; }; struct Point { float y; }; void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("duplicate struct definition"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_name_collision_with_function() {
+    let src = "void Point() {} struct Point { int x; }; void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("name collision"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_function_name_collision_with_struct() {
+    let src = "struct Point { int x; }; void Point() {} void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("name collision"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_duplicate_fields_fails() {
+    let src = "struct Point { int x; float x; }; void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("duplicate field 'x'"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_function_with_struct_param_fails() {
+    // Decision 15: functions cannot have struct parameters
+    let src = "struct Point { int x; }; void f(Point p) {} void main() {}";
+    // Note: the parser itself rejects UserDefined in params, returning a parse error
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("parse failed") || err.message.contains("cannot have a struct type"));
+}
+
+// --- Local Variable Declarations with Structs (Task B - Step 2) ---
+
+#[test]
+fn test_type_check_struct_local_decl_valid() {
+    let src = "struct Point { int x; }; void main() { Point p; }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_undefined_type_fails() {
+    let src = "void main() { Fantasma f; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("undefined type: 'Fantasma'"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_use_before_decl_fails() {
+    // Decision 11: declaration before use
+    let src = "void main() { Point p; } struct Point { int x; };";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("undefined type: 'Point'"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_local_var_name_collision_with_struct() {
+    // Decision 12: local variable cannot share name with a struct
+    let src = "struct Point { int x; }; void main() { int Point = 10; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("name collision"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_copy_assignment_in_decl_fails() {
+    // Decision 24: structs cannot be copied from another variable
+    let src = "struct Point { int x; }; void main() { Point a; Point b = a; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("cannot copy struct"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_array_of_structs_fails() {
+    // Decision 24: array of structs is not supported
+    let src = "struct Point { int x; }; void main() { Point[] lista; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("arrays of structs are not supported"), "{}", err.message);
+}
+
+// --- Nominal Typing and Compatibility (Task B - Step 3) ---
+
+#[test]
+fn test_type_check_nominal_typing_compatibility() {
+    use mini_c::semantic::types_compatible;
+
+    let pessoa = Type::UserDefined("Pessoa".to_string());
+    let aluno = Type::UserDefined("Aluno".to_string());
+    let pessoa_clone = Type::UserDefined("Pessoa".to_string());
+
+    // Same struct name is compatible
+    assert!(types_compatible(&pessoa, &pessoa_clone));
+
+    // Different struct names are never compatible, even if they have identical shape (TAPL §19.3)
+    assert!(!types_compatible(&pessoa, &aluno));
+
+    // Structs are not compatible with primitive types
+    assert!(!types_compatible(&pessoa, &Type::Int));
+
+    // Structs are not compatible with Type::Any (protects print and generic functions)
+    assert!(!types_compatible(&pessoa, &Type::Any));
+}
+
+#[test]
+fn test_type_check_struct_cannot_be_printed() {
+    // Decisions 17 & 24: print cannot accept whole structs
+    let src = "struct Point { int x; }; void main() { Point p; print(p); }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("passing structs to functions is not supported"), "{}", err.message);
+}
+
+// --- Prohibited Operations on Whole Structs (Task B - Step 4 / Decision 24) ---
+
+#[test]
+fn test_type_check_struct_whole_assignment_fails() {
+    // Decision 18 & 24: a = b is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; Point b; a = b; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("cannot assign whole struct"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_equality_comparison_fails() {
+    // Decision 16 & 24: a == b is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; Point b; if a == b {} }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("equality operators are not supported for structs"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_inequality_comparison_fails() {
+    // Decision 16 & 24: a != b is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; Point b; if a != b {} }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("equality operators are not supported for structs"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_in_array_literal_fails() {
+    // Decision 24: [a] is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; int x = [a][0]; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("arrays of structs are not supported"), "{}", err.message);
+}
