@@ -605,3 +605,13 @@ fn test_undefined_only_fails_on_executed_path() {
     let src = "void main() { int x; int i = 0; while i < 1 { x = 7; i = i + 1; } print(x); }";
     assert!(run(src).is_ok(), "{}", run(src).unwrap_err());
 }
+
+// --- Struct Runtime Initialization (Task B - Step 5) ---
+
+#[test]
+fn test_struct_decl_initializes_to_empty_struct_value() {
+    use std::collections::HashMap;
+    let src = "struct Point { int x; int y; }; void main() { Point p; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("p"), Some(&Value::Struct(HashMap::new())));
+}

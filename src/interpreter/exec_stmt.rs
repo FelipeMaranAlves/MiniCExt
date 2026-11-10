@@ -34,7 +34,7 @@
 //! This gives MiniC correct lexical block scoping without a scope stack.
 
 use crate::environment::Environment;
-use crate::ir::ast::{CheckedExpr, CheckedStmt, Expr, Statement};
+use crate::ir::ast::{CheckedExpr, CheckedStmt, Expr, Statement, Type};
 
 use super::eval_expr::{eval_call, eval_expr};
 use super::value::{read_defined, RuntimeError, Value};
@@ -46,12 +46,16 @@ pub type ExecResult = Result<Option<Value>, RuntimeError>;
 pub fn exec_stmt(stmt: &CheckedStmt, env: &mut Environment<Value>) -> ExecResult {
     match &stmt.stmt {
         // --- Variable declaration ---
-        Statement::Decl { name, init, .. } => {
+        Statement::Decl { name, ty, init } => {
             // `T x;` reserves the variable now so `&x` and `x = e` work; reading it
             // before an assignment fails in `read_defined`.
+            // For structs, an uninitialized struct starts as an empty struct value where absent fields mean undefined.
             let val = match init {
                 Some(init) => eval_expr(init, env)?,
-                None => Value::Undefined,
+                None => match ty {
+                    Type::UserDefined(_) => Value::Struct(std::collections::HashMap::new()),
+                    _ => Value::Undefined,
+                },
             };
             env.declare(name.clone(), val);
             Ok(None)

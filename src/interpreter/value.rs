@@ -61,6 +61,7 @@
 //! here (rather than in `stdlib`) to avoid a circular dependency: `stdlib`
 //! needs `Value`, and `Value` needs to reference the callable type.
 
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::ir::ast::CheckedFunDecl;
@@ -106,6 +107,8 @@ pub enum Value {
     Fn(FnValue),
     /// Pointer: holds the name of the target variable in the environment.
     Ptr(usize),
+    /// A user-defined struct value containing its fields. Absent fields represent unassigned (undefined) fields.
+    Struct(HashMap<String, Value>),
     /// Content of a variable declared without initializer and not assigned yet.
     /// It can be stored and overwritten, but never read: see `read_defined`.
     Undefined,
@@ -131,6 +134,7 @@ impl fmt::Display for Value {
             }
             Value::Fn(_) => write!(f, "<function>"),
             Value::Ptr(target) => write!(f, "&{}", target),
+            Value::Struct(_) => write!(f, "<struct>"),
             Value::Undefined => write!(f, "undefined"),
         }
     }
