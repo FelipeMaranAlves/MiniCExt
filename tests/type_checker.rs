@@ -474,10 +474,15 @@ fn test_type_check_struct_copy_assignment_in_decl_fails() {
 
 #[test]
 fn test_type_check_array_of_structs_fails() {
-    // Decision 24: array of structs is not supported
+    // Decision 24: array of structs is not supported (rejected by parser or type checker)
     let src = "struct Point { int x; }; void main() { Point[] lista; }";
     let err = parse_and_type_check(src).unwrap_err();
-    assert!(err.message.contains("arrays of structs are not supported"), "{}", err.message);
+    assert!(
+        err.message.contains("parse failed")
+            || err.message.contains("arrays of structs are not supported"),
+        "{}",
+        err.message
+    );
 }
 
 // --- Nominal Typing and Compatibility (Task B - Step 3) ---
@@ -544,3 +549,84 @@ fn test_type_check_struct_in_array_literal_fails() {
     let err = parse_and_type_check(src).unwrap_err();
     assert!(err.message.contains("arrays of structs are not supported"), "{}", err.message);
 }
+
+// --- Struct Field Access: Read and Write ---
+
+#[test]
+fn test_type_check_struct_field_read_and_write_valid() {
+    let src = "struct Pessoa { int idade; str nome; int[] v; }; void main() { Pessoa p; p.idade = 3; p.nome = \"Ana\"; int x = p.idade; print(p.idade); }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_field_on_non_struct_fails() {
+    let src = "void main() { int x = 1; print(x.y); }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("cannot access field 'y' on non-struct type"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_field_assign_on_non_struct_fails() {
+    let src = "void main() { int x = 1; x.y = 2; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("cannot access field 'y' on non-struct type"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_unknown_field_read_fails() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p; print(p.inexistente); }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("struct 'Pessoa' has no field 'inexistente'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_unknown_field_write_fails() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p; p.inexistente = 10; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("struct 'Pessoa' has no field 'inexistente'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_field_assign_type_mismatch_fails() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p; p.idade = \"a\"; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("assignment to Pessoa.idade: expected Int, got Str"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_array_field_index_read_and_write_valid() {
+    let src = "struct Container { int[] v; }; void main() { Container p; p.v = [1, 2, 3]; p.v[0] = 9; print(p.v[0]); }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_array_field_index_type_mismatch_fails() {
+    let src = "struct Container { int[] v; }; void main() { Container p; p.v = [1, 2, 3]; p.v[0] = \"errado\"; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("assignment type mismatch"),
+        "{}",
+        err.message
+    );
+}
+
