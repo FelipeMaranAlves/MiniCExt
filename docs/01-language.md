@@ -87,6 +87,19 @@ struct Pessoa { int idade; str nome; }
 When declaring a variable, the `struct` keyword is optional:
 `Pessoa p;` and `struct Pessoa p;` are the same declaration.
 
+Fields of a struct declared without an initialiser start **undefined** and are
+accessed and assigned with `.`:
+
+```c
+Pessoa p;
+p.idade = 30;
+p.nome = "Ana";
+print(p.idade);  // 30
+```
+
+Reading a field before assigning to it is a runtime error (`field 'p.idade' was read before being assigned`).
+Array fields inside a struct can also be indexed directly (`p.v[0] = 9;`).
+
 ---
 
 ## Statements

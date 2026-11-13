@@ -500,5 +500,33 @@ A manipulação deve ocorrer exclusivamente campo a campo (ou futuramente via po
 
 - `cargo test --test type_checker` (70/70 verdes).
 
+---
+
+## Commit: Interpretador - Leitura e escrita de campos de struct em runtime
+
+**Data:** 2026-11-13  
+**Arquivos:** `src/interpreter/eval_expr.rs`, `src/interpreter/exec_stmt.rs`, `tests/interpreter.rs`, `tests/fixtures/interpreter_struct_fields.minic`, `tests/cli/run.test`, `docs/01-language.md`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `Expr::Field` em `eval_expr` | Avalia a base para `Value::Struct`, extrai o campo (ou `Value::Undefined` se ausente) e valida a leitura com `read_defined(field_val, "field 'p.campo'")` |
+| `Expr::Field` em `assign_lvalue` | Lê o `Value::Struct` da variável base, insere/atualiza o campo no `HashMap` e grava o struct de volta com `env.set` (`p.campo = valor`) |
+| `Expr::Field` em `assign_index` | Adiciona suporte a `p.v[i] = valor`: lê o struct, verifica via `read_defined` se o campo array foi atribuído, checa limites do índice (`out of bounds`), altera `elems[idx]` e grava o struct atualizado de volta no `env` |
+| Testes e fixture CLI | 6 novos testes em `tests/interpreter.rs`, fixture `interpreter_struct_fields.minic` em `tests/cli/run.test` e atualização de `docs/01-language.md` |
+
+### Por que
+
+1. **Leitura de campo e representação de `Undefined` por ausência:** Como o type checker já garantiu estaticamente que a base é um struct válido e que o campo existe na definição, a ausência da chave no `HashMap` interno de `Value::Struct` em runtime significa sem ambiguidade que o campo ainda não recebeu valor. Ao converter a ausência em `Value::Undefined` e passar por `read_defined(field_val, "field 'p.campo'")`, reutilizamos o mesmo portão de leitura de variáveis não inicializadas e produzimos uma mensagem que identifica tanto a variável quanto o campo (`field 'p.idade' was read before being assigned`).
+2. **Escrita sem referências ("ler, alterar, gravar de volta"):** Como `Value` no interpretador tem semântica de valor (e não referência compartilhada), alterar um campo segue a mesma estratégia de `assign_index`: `assign_lvalue` busca o `Value::Struct` atual no `Environment`, atualiza a entrada do `HashMap` e grava o struct modificado de volta com `env.set`.
+3. **Escrita indexada em campo array (`p.v[i] = x`):** Em `p.v[i] = x`, `assign_lvalue` entra no braço `Expr::Index` e delega para `assign_index`, cuja base agora é `Expr::Field { base: p, field: "v" }` em vez de `Expr::Ident`. O novo braço `Expr::Field` em `assign_index` lê o struct `p`, exige que o campo `v` já tenha sido inicializado com um array (usando `read_defined`), verifica se `idx < elems.len()`, atualiza o elemento e regrava o `Value::Struct` completo em `p`.
+4. **Escopo de bloco (`snapshot` / `restore`):** No `Environment` unificado (`scopes` + `store`), `env.set` escreve no endereço já alocado para a variável declarada fora do bloco. Quando o bloco termina, `restore` apenas restaura o mapa de nomes (`scopes`), mantendo intactas na `store` as mutações feitas nos campos do struct dentro do bloco.
+
+### Verificação
+
+- `cargo test` (236 testes verdes) e execução via CLI de `tests/fixtures/interpreter_struct_fields.minic`.
+
+
 
 
