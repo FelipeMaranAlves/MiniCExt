@@ -30,3 +30,11 @@ $ ./target/debug/mini_c --run tests/fixtures/interpreter_undefined.minic
 5
 >2 /variable 'y' was read before being assigned/
 >=1
+
+# struct fields can be assigned, indexed, and read; reading an unassigned field fails
+$ ./target/debug/mini_c --run tests/fixtures/interpreter_struct_fields.minic
+3
+9
+>2 /field 'q.idade' was read before being assigned/
+>=1
+

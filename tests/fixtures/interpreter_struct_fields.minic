@@ -1,0 +1,15 @@
+struct Pessoa {
+    int idade;
+    int[] v;
+}
+
+void main() {
+    Pessoa p;
+    p.idade = 3;
+    print(p.idade);
+    p.v = [1, 2];
+    p.v[0] = 9;
+    print(p.v[0]);
+    Pessoa q;
+    print(q.idade);
+}

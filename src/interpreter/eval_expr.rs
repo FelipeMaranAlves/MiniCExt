@@ -152,7 +152,23 @@ pub fn eval_expr(expr: &CheckedExpr, env: &mut Environment<Value>) -> Result<Val
         }
         Expr::AddrOf(elem) => eval_addr_of(elem, env),
         Expr::Deref(elem) => eval_deref(elem, env),
-        Expr::Field { .. } => Err(RuntimeError::new("struct field access is not supported yet")),
+        Expr::Field { base, field } => {
+            let base_val = eval_expr(base, env)?;
+            let what = match &base.exp {
+                Expr::Ident(var_name) => format!("field '{}.{}'", var_name, field),
+                _ => format!("field '{}'", field),
+            };
+            match base_val {
+                Value::Struct(mut fields) => {
+                    let field_val = fields.remove(field).unwrap_or(Value::Undefined);
+                    read_defined(field_val, &what)
+                }
+                v => Err(RuntimeError::new(format!(
+                    "cannot access field '{}' on non-struct value: {}",
+                    field, v
+                ))),
+            }
+        }
         Expr::StructLit { .. } => Err(RuntimeError::new("struct literal is not supported yet")),
     }
 }
