@@ -473,3 +473,32 @@ A manipulação deve ocorrer exclusivamente campo a campo (ou futuramente via po
 - `cargo check --tests` e `cargo check --lib` passando com 0 erros.
 - Cobertura completa de cenários válidos e inválidos em `tests/type_checker.rs` e `tests/interpreter.rs`.
 
+---
+
+## Commit: Checker - Verificação de acesso e atribuição a campo de struct
+
+**Data:** 2026-11-13  
+**Arquivos:** `src/semantic/type_checker.rs`, `tests/type_checker.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| Propagação de `structs` nas expressões | `type_check_expr`, `type_check_expr_inner`, `type_check_expr_to_typed` e `type_check_assign_target` passam a receber `&HashMap<String, StructDecl>` |
+| `resolve_struct_field_type` | Valida que a base tem tipo `Type::UserDefined(struct_name)`, consulta `lookup_struct` e busca o tipo do campo em `StructDecl` |
+| `Expr::Field` na leitura | Infere o tipo do campo em `type_check_expr` e reconstrói o `CheckedExpr` em `type_check_expr_inner` |
+| `Expr::Field` na escrita | Valida compatibilidade entre o valor atribuído e o tipo declarado do campo em `type_check_assign_target` (`p.campo = valor`) |
+| Testes no checker | 8 novos testes cobrindo leitura/escrita válida, base não-struct, campo inexistente, incompatibilidade de tipos e indexação de campo array (`p.v[i] = x`) |
+
+### Por que
+
+1. **Invariante única para leitura e escrita (`resolve_struct_field_type`):** Tanto ler `p.idade` quanto atribuir `p.idade = 3` exigem as mesmas duas garantias: a expressão base precisa ter um tipo definido pelo usuário (`Type::UserDefined(struct_name)`) e o campo precisa existir na definição registrada no catálogo `structs`. Centralizar essa consulta em `resolve_struct_field_type` evita duplicação entre `type_check_expr` e `type_check_assign_target` e distingue claramente os dois erros possíveis: tentar acessar campo em tipo primitivo/array (`cannot access field 'y' on non-struct type Int`) e tentar acessar campo que não pertence ao struct (`struct 'Pessoa' has no field 'inexistente'`).
+2. **Duas funções paralelas sobre expressões:** O checker separa a inferência do tipo (`type_check_expr`) da reconstrução da árvore decorada (`type_check_expr_inner`). Por isso o braço `Expr::Field` entra nas duas: a primeira devolve o `Type` do campo consultado no catálogo e a segunda reconstrói `Expr::Field` com a `base` já tipada (`CheckedExpr`).
+3. **Escrita em elemento de campo array (`p.v[i] = 3`) sem caso especial:** Em `p.v[i] = 3`, o parser monta `Expr::Index { base: Expr::Field { base: p, field: "v" }, index: i }`. O braço `Expr::Index` já existente em `type_check_assign_target` infere o tipo da base chamando `type_check_expr(base, env, structs)`. Como `type_check_expr` agora resolve `p.v` como `Type::Array(Int)`, a verificação de `p.v[i] = 3` funciona automaticamente.
+
+### Verificação
+
+- `cargo test --test type_checker` (70/70 verdes).
+
+
+
