@@ -527,6 +527,35 @@ A manipulação deve ocorrer exclusivamente campo a campo (ou futuramente via po
 
 - `cargo test` (236 testes verdes) e execução via CLI de `tests/fixtures/interpreter_struct_fields.minic`.
 
+---
+
+## Commit: Literal de struct de ponta a ponta (Pessoa D)
+
+**Data:** 2026-11-18  
+**Arquivos:** `src/parser/expressions.rs`, `src/parser/mod.rs`, `src/semantic/type_checker.rs`, `src/interpreter/eval_expr.rs`, `tests/parser.rs`, `tests/type_checker.rs`, `tests/interpreter.rs`, `tests/fixtures/interpreter_struct_literal.minic`, `tests/cli/run.test`, `docs/01-language.md`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `struct_literal` em `expressions.rs` | Parser para `Nome { campo: expr, ... }` com suporte a vírgula final opcional e exigência de >= 1 campo (D9) |
+| Resolução de ambiguidade no `atom` | `struct_literal` posicionado antes de `identifier`; como blocos de `if`/`while` nunca iniciam com `ident :`, o parser faz backtracking seguro na condição sem parênteses |
+| Type check de `Expr::StructLit` | Consulta `lookup_struct`, valida que todos os campos declarados estão presentes (sem omissões, duplicatas ou campos desconhecidos) e checa a compatibilidade dos tipos dos campos |
+| Avaliação em `eval_expr` | Avalia cada expressão de campo na ordem do fonte e monta `Value::Struct(HashMap)` |
+| Testes e fixture CLI | Testes no parser (incluindo `if`/`while`), no type checker (casos válidos, campos desconhecidos, duplicados, faltando e incompatíveis) e no interpretador, além da fixture `interpreter_struct_literal.minic` no CLI |
+
+### Por que
+
+1. **Ambiguidade de `if`/`while` sem parênteses:** Como o MiniC não usa parênteses em condições de controle de fluxo (`if cond { ... }`), tentar um identificador antes de um struct literal consumiria apenas o nome do tipo. Ao posicionar `struct_literal` antes de `identifier` no combinator `atom`, o parser tenta casar `Nome { campo: expr ... }`. Como uma instrução ou bloco de `if`/`while` nunca inicia com a sintaxe `ident :`, qualquer condição simples seguida de bloco (ex: `if x {}` ou `if x { y = 1; }`) falha no combinator de campo e faz backtracking limpo para `Expr::Ident`.
+2. **Exigência de todos os campos no literal:** Exigir a inicialização completa de todos os campos declarados no struct literal garante que o objeto nasça totalmente inicializado, alinhando-se à semântica de records do TAPL. Omissão de campo vira erro estático de tipo (`missing field`), enquanto inicialização parcial/campos indefinidos continuam sendo domínio exclusivo da declaração sem inicializador (`Pessoa p;` via D20).
+3. **Avaliação na ordem do fonte:** Como o nó do AST `Expr::StructLit` preserva uma lista ordenada `Vec<(String, ExprD)>`, a avaliação em runtime percorre essa lista garantindo que efeitos colaterais na avaliação dos campos aconteçam estritamente na ordem em que foram escritos pelo programador.
+
+### Verificação
+
+- `cargo test` (todos os alvos verdes).
+- Execução CLI via `mini_c --run tests/fixtures/interpreter_struct_literal.minic`.
+
+
 
 
 
