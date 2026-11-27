@@ -38,3 +38,10 @@ $ ./target/debug/mini_c --run tests/fixtures/interpreter_struct_fields.minic
 >2 /field 'q.idade' was read before being assigned/
 >=1
 
+# struct literal initializes fields and can be read and printed
+$ ./target/debug/mini_c --run tests/fixtures/interpreter_struct_literal.minic
+Ana
+30
+>=0
+
+

@@ -100,6 +100,18 @@ print(p.idade);  // 30
 Reading a field before assigning to it is a runtime error (`field 'p.idade' was read before being assigned`).
 Array fields inside a struct can also be indexed directly (`p.v[0] = 9;`).
 
+### Struct literals
+
+Struct variables can be initialized using struct literals:
+
+```c
+Pessoa p = Pessoa { idade: 30, nome: "Ana" };
+print(p.nome);   // "Ana"
+print(p.idade);  // 30
+```
+
+A struct literal requires at least one field and must initialize all fields declared by the struct. Omitting a field, duplicating a field, specifying an unknown field, or passing a value with an incompatible type results in a type error. An optional trailing comma after the last field is supported (`Pessoa { idade: 30, nome: "Ana", }`).
+
 ---
 
 ## Statements
