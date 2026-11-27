@@ -34,7 +34,7 @@
 //! This gives MiniC correct lexical block scoping without a scope stack.
 
 use crate::environment::Environment;
-use crate::ir::ast::{CheckedExpr, CheckedStmt, Expr, Statement};
+use crate::ir::ast::{CheckedExpr, CheckedStmt, Expr, Statement, Type};
 
 use super::eval_expr::{eval_call, eval_expr};
 use super::value::{read_defined, RuntimeError, Value};
@@ -46,12 +46,16 @@ pub type ExecResult = Result<Option<Value>, RuntimeError>;
 pub fn exec_stmt(stmt: &CheckedStmt, env: &mut Environment<Value>) -> ExecResult {
     match &stmt.stmt {
         // --- Variable declaration ---
-        Statement::Decl { name, init, .. } => {
+        Statement::Decl { name, ty, init } => {
             // `T x;` reserves the variable now so `&x` and `x = e` work; reading it
             // before an assignment fails in `read_defined`.
+            // For structs, an uninitialized struct starts as an empty struct value where absent fields mean undefined.
             let val = match init {
                 Some(init) => eval_expr(init, env)?,
-                None => Value::Undefined,
+                None => match ty {
+                    Type::UserDefined(_) => Value::Struct(std::collections::HashMap::new()),
+                    _ => Value::Undefined,
+                },
             };
             env.declare(name.clone(), val);
             Ok(None)
@@ -177,6 +181,25 @@ fn assign_lvalue(
                 Err(RuntimeError::new("cannot assign to dereference of non-pointer"))
             }
         }
+        Expr::Field { base, field } => {
+            let name = extract_ident_name(base)?;
+            let current = env
+                .get(&name)
+                .cloned()
+                .ok_or_else(|| RuntimeError::new(format!("undefined variable '{}'", name)))?;
+            let current = read_defined(current, &format!("variable '{}'", name))?;
+            match current {
+                Value::Struct(mut fields) => {
+                    fields.insert(field.clone(), val);
+                    env.set(&name, Value::Struct(fields));
+                    Ok(())
+                }
+                v => Err(RuntimeError::new(format!(
+                    "cannot assign field '{}' on non-struct value: {}",
+                    field, v
+                ))),
+            }
+        }
         _ => Err(RuntimeError::new("invalid assignment target".to_string())),
     }
 }
@@ -211,6 +234,47 @@ fn assign_index(
                 v => Err(RuntimeError::new(format!(
                     "cannot index non-array value: {}",
                     v
+                ))),
+            }
+        }
+        Expr::Field {
+            base: struct_base,
+            field,
+        } => {
+            let name = extract_ident_name(struct_base)?;
+            let current = env
+                .get(&name)
+                .cloned()
+                .ok_or_else(|| RuntimeError::new(format!("undefined variable '{}'", name)))?;
+            let current = read_defined(current, &format!("variable '{}'", name))?;
+            match current {
+                Value::Struct(mut fields) => {
+                    let field_val = fields.remove(field).unwrap_or(Value::Undefined);
+                    let field_val =
+                        read_defined(field_val, &format!("field '{}.{}'", name, field))?;
+                    match field_val {
+                        Value::Array(mut elems) => {
+                            if idx >= elems.len() {
+                                return Err(RuntimeError::new(format!(
+                                    "array index {} out of bounds (len {})",
+                                    idx,
+                                    elems.len()
+                                )));
+                            }
+                            elems[idx] = val;
+                            fields.insert(field.clone(), Value::Array(elems));
+                            env.set(&name, Value::Struct(fields));
+                            Ok(())
+                        }
+                        v => Err(RuntimeError::new(format!(
+                            "cannot index non-array value: {}",
+                            v
+                        ))),
+                    }
+                }
+                v => Err(RuntimeError::new(format!(
+                    "cannot access field '{}' on non-struct value: {}",
+                    field, v
                 ))),
             }
         }

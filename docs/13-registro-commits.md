@@ -428,3 +428,134 @@ tabela de definições e as mensagens de erro já nasçam com o nome novo.
 ### Verificação
 
 - `cargo test` e `shelltest tests/cli/` (14/14) verdes; nenhum comportamento muda.
+
+---
+
+## Commit: Checker e Interpretador — Registro de structs, tipagem nominal e proibições de struct inteiro
+
+**Data:** 2026-11-09  
+**Arquivos:** `src/semantic/type_checker.rs`, `src/semantic/mod.rs`, `src/interpreter/value.rs`, `src/interpreter/exec_stmt.rs`, `tests/type_checker.rs`, `tests/interpreter.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `structs: HashMap<String, StructDecl>` | Catálogo de tipos de struct preenchido e verificado em ordem de declaração no programa |
+| `lookup_struct` | Função utilitária para consultar a definição de um struct pelo nome ou emitir erro de tipo |
+| Validações de struct | Rejeita struct com nome duplicado, colisão de identificador com função, campos com nomes duplicados, campos de tipo `void` e campos aninhados |
+| Funções sem struct em assinatura | Proíbe funções de terem parâmetros ou tipo de retorno com tipo struct |
+| Validação em declaração local | Tipo declarado pelo usuário deve existir no catálogo; nome de variável local não pode colidir com struct |
+| Tipagem nominal | Dois `Type::UserDefined` só são compatíveis se tiverem exatamente o mesmo nome (TAPL §19.3); structs não são compatíveis com `Type::Any` |
+| Proibições de struct inteiro | Bloqueia cópia em declaração (`Point b = a;`), atribuição completa (`a = b;`), comparações (`==`, `!=`), literais de array (`[p]`) e passagem de struct para funções (`print(p)`) |
+| `Value::Struct(HashMap<String, Value>)` | Nova variante de valor no interpretador para instâncias de structs |
+| Inicialização no interpretador | Declaração sem inicializador de tipo `UserDefined` instancia struct com mapa de campos vazio |
+| Testes automatizados | 15 novos testes no type checker e 1 novo teste no interpretador cobrindo todas as novas regras |
+
+### Por que
+
+**Declaração antes do uso (ordem textual única):** O compilador do MiniC processa as definições em um único passo sequencial. O catálogo de structs é populado na ordem em que aparecem no código. O uso de um tipo antes de sua declaração (ou a declaração de structs recursivos/aninhados) é rejeitado com erro de tipo não definido (`undefined type`).
+
+**Espaço de nomes compartilhado:** Structs, funções e variáveis locais compartilham o mesmo espaço conceitual de identificadores. Evita-se assim ambiguidade entre invocar uma função ou instanciar/usar um tipo de mesmo nome no mesmo escopo.
+
+**Tipagem nominal (TAPL §19.3):** Adota-se estritamente tipagem nominal para `Type::UserDefined`: dois structs são tipos distintos mesmo que possuam campos idênticos em nome e tipo. Além disso, structs não casam com `Type::Any`, impedindo que funções polimórficas built-in (como `print`) aceitem structs diretamente.
+
+**Proibições de operações em struct inteiro:** O modelo do MiniC não implementa cópia profunda (deep copy) nem comparação campo a campo automática de registros. Para evitar comportamentos indefinidos ou cópias parciais de estado em memória:
+- Atribuição de struct inteiro (`a = b;` ou `Point b = a;`) é proibida;
+- Comparações (`a == b`, `a != b`) são proibidas;
+- Literais ou arrays de structs são proibidos;
+- Passagem de structs inteiros como argumentos ou retornos de funções é rejeitada no checker.
+A manipulação deve ocorrer exclusivamente campo a campo (ou futuramente via ponteiros).
+
+**Inicialização com mapa vazio no runtime:** Conforme alinhado no commit do valor `Undefined`, um campo de struct não inicializado é representado pela sua ausência no mapa interno do `Value::Struct`. Ao executar uma declaração de struct sem inicializador (`Point p;`), o interpretador cria um `Value::Struct(HashMap::new())`. Quando o acesso a campo for avaliado, a ausência de uma chave resultará na chamada a `read_defined(Value::Undefined, "field 'p.campo'")`, garantindo detecção precisa de leituras não inicializadas sem sobrecarregar o interpretador com schemas estáticos de tipos.
+
+### Verificação
+
+- `cargo check --tests` e `cargo check --lib` passando com 0 erros.
+- Cobertura completa de cenários válidos e inválidos em `tests/type_checker.rs` e `tests/interpreter.rs`.
+
+---
+
+## Commit: Checker - Verificação de acesso e atribuição a campo de struct
+
+**Data:** 2026-11-13  
+**Arquivos:** `src/semantic/type_checker.rs`, `tests/type_checker.rs`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| Propagação de `structs` nas expressões | `type_check_expr`, `type_check_expr_inner`, `type_check_expr_to_typed` e `type_check_assign_target` passam a receber `&HashMap<String, StructDecl>` |
+| `resolve_struct_field_type` | Valida que a base tem tipo `Type::UserDefined(struct_name)`, consulta `lookup_struct` e busca o tipo do campo em `StructDecl` |
+| `Expr::Field` na leitura | Infere o tipo do campo em `type_check_expr` e reconstrói o `CheckedExpr` em `type_check_expr_inner` |
+| `Expr::Field` na escrita | Valida compatibilidade entre o valor atribuído e o tipo declarado do campo em `type_check_assign_target` (`p.campo = valor`) |
+| Testes no checker | 8 novos testes cobrindo leitura/escrita válida, base não-struct, campo inexistente, incompatibilidade de tipos e indexação de campo array (`p.v[i] = x`) |
+
+### Por que
+
+1. **Invariante única para leitura e escrita (`resolve_struct_field_type`):** Tanto ler `p.idade` quanto atribuir `p.idade = 3` exigem as mesmas duas garantias: a expressão base precisa ter um tipo definido pelo usuário (`Type::UserDefined(struct_name)`) e o campo precisa existir na definição registrada no catálogo `structs`. Centralizar essa consulta em `resolve_struct_field_type` evita duplicação entre `type_check_expr` e `type_check_assign_target` e distingue claramente os dois erros possíveis: tentar acessar campo em tipo primitivo/array (`cannot access field 'y' on non-struct type Int`) e tentar acessar campo que não pertence ao struct (`struct 'Pessoa' has no field 'inexistente'`).
+2. **Duas funções paralelas sobre expressões:** O checker separa a inferência do tipo (`type_check_expr`) da reconstrução da árvore decorada (`type_check_expr_inner`). Por isso o braço `Expr::Field` entra nas duas: a primeira devolve o `Type` do campo consultado no catálogo e a segunda reconstrói `Expr::Field` com a `base` já tipada (`CheckedExpr`).
+3. **Escrita em elemento de campo array (`p.v[i] = 3`) sem caso especial:** Em `p.v[i] = 3`, o parser monta `Expr::Index { base: Expr::Field { base: p, field: "v" }, index: i }`. O braço `Expr::Index` já existente em `type_check_assign_target` infere o tipo da base chamando `type_check_expr(base, env, structs)`. Como `type_check_expr` agora resolve `p.v` como `Type::Array(Int)`, a verificação de `p.v[i] = 3` funciona automaticamente.
+
+### Verificação
+
+- `cargo test --test type_checker` (70/70 verdes).
+
+---
+
+## Commit: Interpretador - Leitura e escrita de campos de struct em runtime
+
+**Data:** 2026-11-13  
+**Arquivos:** `src/interpreter/eval_expr.rs`, `src/interpreter/exec_stmt.rs`, `tests/interpreter.rs`, `tests/fixtures/interpreter_struct_fields.minic`, `tests/cli/run.test`, `docs/01-language.md`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `Expr::Field` em `eval_expr` | Avalia a base para `Value::Struct`, extrai o campo (ou `Value::Undefined` se ausente) e valida a leitura com `read_defined(field_val, "field 'p.campo'")` |
+| `Expr::Field` em `assign_lvalue` | Lê o `Value::Struct` da variável base, insere/atualiza o campo no `HashMap` e grava o struct de volta com `env.set` (`p.campo = valor`) |
+| `Expr::Field` em `assign_index` | Adiciona suporte a `p.v[i] = valor`: lê o struct, verifica via `read_defined` se o campo array foi atribuído, checa limites do índice (`out of bounds`), altera `elems[idx]` e grava o struct atualizado de volta no `env` |
+| Testes e fixture CLI | 6 novos testes em `tests/interpreter.rs`, fixture `interpreter_struct_fields.minic` em `tests/cli/run.test` e atualização de `docs/01-language.md` |
+
+### Por que
+
+1. **Leitura de campo e representação de `Undefined` por ausência:** Como o type checker já garantiu estaticamente que a base é um struct válido e que o campo existe na definição, a ausência da chave no `HashMap` interno de `Value::Struct` em runtime significa sem ambiguidade que o campo ainda não recebeu valor. Ao converter a ausência em `Value::Undefined` e passar por `read_defined(field_val, "field 'p.campo'")`, reutilizamos o mesmo portão de leitura de variáveis não inicializadas e produzimos uma mensagem que identifica tanto a variável quanto o campo (`field 'p.idade' was read before being assigned`).
+2. **Escrita sem referências ("ler, alterar, gravar de volta"):** Como `Value` no interpretador tem semântica de valor (e não referência compartilhada), alterar um campo segue a mesma estratégia de `assign_index`: `assign_lvalue` busca o `Value::Struct` atual no `Environment`, atualiza a entrada do `HashMap` e grava o struct modificado de volta com `env.set`.
+3. **Escrita indexada em campo array (`p.v[i] = x`):** Em `p.v[i] = x`, `assign_lvalue` entra no braço `Expr::Index` e delega para `assign_index`, cuja base agora é `Expr::Field { base: p, field: "v" }` em vez de `Expr::Ident`. O novo braço `Expr::Field` em `assign_index` lê o struct `p`, exige que o campo `v` já tenha sido inicializado com um array (usando `read_defined`), verifica se `idx < elems.len()`, atualiza o elemento e regrava o `Value::Struct` completo em `p`.
+4. **Escopo de bloco (`snapshot` / `restore`):** No `Environment` unificado (`scopes` + `store`), `env.set` escreve no endereço já alocado para a variável declarada fora do bloco. Quando o bloco termina, `restore` apenas restaura o mapa de nomes (`scopes`), mantendo intactas na `store` as mutações feitas nos campos do struct dentro do bloco.
+
+### Verificação
+
+- `cargo test` (236 testes verdes) e execução via CLI de `tests/fixtures/interpreter_struct_fields.minic`.
+
+---
+
+## Commit: Literal de struct de ponta a ponta (Pessoa D)
+
+**Data:** 2026-11-18  
+**Arquivos:** `src/parser/expressions.rs`, `src/parser/mod.rs`, `src/semantic/type_checker.rs`, `src/interpreter/eval_expr.rs`, `tests/parser.rs`, `tests/type_checker.rs`, `tests/interpreter.rs`, `tests/fixtures/interpreter_struct_literal.minic`, `tests/cli/run.test`, `docs/01-language.md`
+
+### Mudanças
+
+| Mudança | Descrição |
+|---------|-----------|
+| `struct_literal` em `expressions.rs` | Parser para `Nome { campo: expr, ... }` com suporte a vírgula final opcional e exigência de >= 1 campo (D9) |
+| Resolução de ambiguidade no `atom` | `struct_literal` posicionado antes de `identifier`; como blocos de `if`/`while` nunca iniciam com `ident :`, o parser faz backtracking seguro na condição sem parênteses |
+| Type check de `Expr::StructLit` | Consulta `lookup_struct`, valida que todos os campos declarados estão presentes (sem omissões, duplicatas ou campos desconhecidos) e checa a compatibilidade dos tipos dos campos |
+| Avaliação em `eval_expr` | Avalia cada expressão de campo na ordem do fonte e monta `Value::Struct(HashMap)` |
+| Testes e fixture CLI | Testes no parser (incluindo `if`/`while`), no type checker (casos válidos, campos desconhecidos, duplicados, faltando e incompatíveis) e no interpretador, além da fixture `interpreter_struct_literal.minic` no CLI |
+
+### Por que
+
+1. **Ambiguidade de `if`/`while` sem parênteses:** Como o MiniC não usa parênteses em condições de controle de fluxo (`if cond { ... }`), tentar um identificador antes de um struct literal consumiria apenas o nome do tipo. Ao posicionar `struct_literal` antes de `identifier` no combinator `atom`, o parser tenta casar `Nome { campo: expr ... }`. Como uma instrução ou bloco de `if`/`while` nunca inicia com a sintaxe `ident :`, qualquer condição simples seguida de bloco (ex: `if x {}` ou `if x { y = 1; }`) falha no combinator de campo e faz backtracking limpo para `Expr::Ident`.
+2. **Exigência de todos os campos no literal:** Exigir a inicialização completa de todos os campos declarados no struct literal garante que o objeto nasça totalmente inicializado, alinhando-se à semântica de records do TAPL. Omissão de campo vira erro estático de tipo (`missing field`), enquanto inicialização parcial/campos indefinidos continuam sendo domínio exclusivo da declaração sem inicializador (`Pessoa p;` via D20).
+3. **Avaliação na ordem do fonte:** Como o nó do AST `Expr::StructLit` preserva uma lista ordenada `Vec<(String, ExprD)>`, a avaliação em runtime percorre essa lista garantindo que efeitos colaterais na avaliação dos campos aconteçam estritamente na ordem em que foram escritos pelo programador.
+
+### Verificação
+
+- `cargo test` (todos os alvos verdes).
+- Execução CLI via `mini_c --run tests/fixtures/interpreter_struct_literal.minic`.
+
+
+
+
+

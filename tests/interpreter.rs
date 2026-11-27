@@ -1,3 +1,4 @@
+use mini_c::interpreter::interpret;
 use mini_c::{
     environment::Environment,
     interpreter::{
@@ -10,7 +11,6 @@ use mini_c::{
     semantic::type_check,
     stdlib::NativeRegistry,
 };
-use mini_c::interpreter::interpret;
 
 /// Parse, type-check, and interpret a MiniC source string.
 fn run(src: &str) -> Result<(), String> {
@@ -501,24 +501,27 @@ fn test_pointer_escaping_local_scope_survives_in_store() {
 #[test]
 fn test_traditional_stack_and_heap_separation() {
     let mut env = Environment::new();
-    
+
     env.declare("x".to_string(), Value::Int(10));
     let addr_x = env.get_address("x").unwrap();
-    
+
     let snapshot = env.snapshot();
-    
+
     env.declare("p".to_string(), Value::Ptr(addr_x));
-    
+
     if let Some(&Value::Ptr(target_addr)) = env.get("p") {
         env.write_store(target_addr, Value::Int(11));
     }
-    
+
     env.restore(snapshot);
-    
-    assert!(env.get("p").is_none(), "O isolamento de escopo falhou, 'p' vazou.");
+
+    assert!(
+        env.get("p").is_none(),
+        "O isolamento de escopo falhou, 'p' vazou."
+    );
     assert_eq!(
-        env.get("x"), 
-        Some(&Value::Int(11)), 
+        env.get("x"),
+        Some(&Value::Int(11)),
         "A mutação de memória foi perdida! A Store foi indevidamente revertida."
     );
 }
@@ -604,4 +607,102 @@ fn test_undefined_only_fails_on_executed_path() {
     // analysis would reject this; the runtime check accepts it.
     let src = "void main() { int x; int i = 0; while i < 1 { x = 7; i = i + 1; } print(x); }";
     assert!(run(src).is_ok(), "{}", run(src).unwrap_err());
+}
+
+// --- Struct Runtime Initialization (Task B - Step 5) ---
+
+#[test]
+fn test_struct_decl_initializes_to_empty_struct_value() {
+    use std::collections::HashMap;
+    let src = "struct Point { int x; int y; }; void main() { Point p; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("p"), Some(&Value::Struct(HashMap::new())));
+}
+
+// --- Struct Field Access: Read and Write ---
+
+#[test]
+fn test_struct_field_write_and_read() {
+    let src = "struct Pessoa { int idade; str nome; }; void main() { Pessoa p; p.idade = 3; p.nome = \"Ana\"; int x = p.idade; str s = p.nome; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("x"), Some(&Value::Int(3)));
+    assert_eq!(env.get("s"), Some(&Value::Str("Ana".to_string())));
+}
+
+#[test]
+fn test_struct_uninitialized_field_read_is_runtime_error() {
+    assert_read_before_assign(
+        "struct Pessoa { int idade; }; void main() { Pessoa p; print(p.idade); }",
+        "field 'p.idade'",
+    );
+}
+
+#[test]
+fn test_struct_partial_field_assign_reads_defined_and_fails_on_undefined() {
+    let src_ok = "struct Point { int x; int y; }; void main() { Point p; p.x = 10; int a = p.x; }";
+    let env = run_main_env(src_ok).unwrap();
+    assert_eq!(env.get("a"), Some(&Value::Int(10)));
+
+    assert_read_before_assign(
+        "struct Point { int x; int y; }; void main() { Point p; p.x = 10; print(p.y); }",
+        "field 'p.y'",
+    );
+}
+
+#[test]
+fn test_struct_array_field_index_write_and_read() {
+    let src = "struct Container { int[] v; }; void main() { Container p; p.v = [1, 2, 3]; p.v[0] = 9; int x = p.v[0]; int y = p.v[1]; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("x"), Some(&Value::Int(9)));
+    assert_eq!(env.get("y"), Some(&Value::Int(2)));
+}
+
+#[test]
+fn test_struct_uninitialized_array_field_index_assign_is_runtime_error() {
+    assert_read_before_assign(
+        "struct Container { int[] v; }; void main() { Container p; p.v[0] = 9; }",
+        "field 'p.v'",
+    );
+}
+
+#[test]
+fn test_struct_array_field_index_out_of_bounds_is_runtime_error() {
+    let err = run(
+        "struct Container { int[] v; }; void main() { Container p; p.v = [1, 2]; p.v[5] = 9; }",
+    )
+    .expect_err("out of bounds index on struct array field must fail");
+    assert!(err.contains("out of bounds"), "unexpected error: {}", err);
+}
+
+#[test]
+fn test_struct_field_mutation_inside_block_persists() {
+    let src = "struct Point { int x; }; void main() { Point p; p.x = 1; { int temp = 10; p.x = p.x + temp; } int res = p.x; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("res"), Some(&Value::Int(11)));
+    assert_eq!(env.get("temp"), None);
+}
+
+// --- Struct Literal (Pessoa D) ---
+
+#[test]
+fn test_struct_literal_init_and_read_fields() {
+    let src = "struct Pessoa { int idade; str nome; }; void main() { Pessoa p = Pessoa { idade: 30, nome: \"Ana\" }; int a = p.idade; str b = p.nome; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("a"), Some(&Value::Int(30)));
+    assert_eq!(env.get("b"), Some(&Value::Str("Ana".to_string())));
+}
+
+#[test]
+fn test_struct_literal_with_array_field() {
+    let src = "struct Container { int[] v; }; void main() { Container c = Container { v: [10, 20, 30] }; int x = c.v[1]; }";
+    let env = run_main_env(src).unwrap();
+    assert_eq!(env.get("x"), Some(&Value::Int(20)));
+}
+
+#[test]
+fn test_struct_literal_eval_reading_undefined_var_fails() {
+    assert_read_before_assign(
+        "struct Point { int x; }; void main() { int u; Point p = Point { x: u }; }",
+        "variable 'u'",
+    );
 }

@@ -1,0 +1,10 @@
+struct Pessoa {
+    int idade;
+    str nome;
+}
+
+void main() {
+    Pessoa p = Pessoa { idade: 30, nome: "Ana" };
+    print(p.nome);
+    print(p.idade);
+}

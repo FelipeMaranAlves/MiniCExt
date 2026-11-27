@@ -2,16 +2,14 @@
 
 use std::path::Path;
 
-use nom::combinator::all_consuming;
 use mini_c::ir::ast::{CheckedProgram, Expr, Statement, Type};
 use mini_c::parser::program;
 use mini_c::semantic::type_check;
+use nom::combinator::all_consuming;
 
 fn parse_and_type_check(src: &str) -> Result<CheckedProgram, mini_c::semantic::TypeError> {
-    let (_, prog) = all_consuming(program)(src).map_err(|_| {
-        mini_c::semantic::TypeError {
-            message: "parse failed".to_string(),
-        }
+    let (_, prog) = all_consuming(program)(src).map_err(|_| mini_c::semantic::TypeError {
+        message: "parse failed".to_string(),
     })?;
     type_check(&prog)
 }
@@ -36,7 +34,11 @@ fn test_type_check_int_float_coercion() {
     assert!(result.is_ok());
     let prog = result.unwrap();
     let main_fn = prog.functions().find(|f| f.name == "main").unwrap();
-    if let mini_c::ir::ast::Statement::Decl { init: Some(ref init), .. } = main_fn.body.stmt {
+    if let mini_c::ir::ast::Statement::Decl {
+        init: Some(ref init),
+        ..
+    } = main_fn.body.stmt
+    {
         assert_eq!(init.ty, Type::Float);
     } else {
         panic!("expected Decl");
@@ -146,7 +148,10 @@ fn test_type_check_return_void_ok() {
 fn test_type_check_return_value_in_void_fn() {
     let result = parse_and_type_check("void main() return 1;");
     assert!(result.is_err());
-    assert!(result.unwrap_err().message.contains("void function must not return a value"));
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("void function must not return a value"));
 }
 
 #[test]
@@ -239,10 +244,8 @@ fn test_type_check_pointer_function_fixture() {
 
 #[test]
 fn test_type_check_addr_of_and_deref_types() {
-    let prog = parse_and_type_check(
-        "void main() { int x = 1; int* p = &x; int y = *p; }",
-    )
-    .expect("pointer decl and deref should type-check");
+    let prog = parse_and_type_check("void main() { int x = 1; int* p = &x; int y = *p; }")
+        .expect("pointer decl and deref should type-check");
 
     let main_fn = prog.functions().find(|f| f.name == "main").unwrap();
     let Statement::Block { seq } = &main_fn.body.stmt else {
@@ -250,14 +253,18 @@ fn test_type_check_addr_of_and_deref_types() {
     };
 
     let p_init = match &seq[1].stmt {
-        Statement::Decl { init: Some(init), .. } => init,
+        Statement::Decl {
+            init: Some(init), ..
+        } => init,
         _ => panic!("expected int* p = &x decl"),
     };
     assert_eq!(p_init.ty, Type::Pointer(Box::new(Type::Int)));
     assert!(matches!(p_init.exp, Expr::AddrOf(_)));
 
     let y_init = match &seq[2].stmt {
-        Statement::Decl { init: Some(init), .. } => init,
+        Statement::Decl {
+            init: Some(init), ..
+        } => init,
         _ => panic!("expected int y = *p decl"),
     };
     assert_eq!(y_init.ty, Type::Int);
@@ -301,51 +308,43 @@ fn test_type_check_pointer_rebind() {
 fn test_type_check_deref_non_pointer() {
     let result = parse_and_type_check("void main() { int x = 1; int y = *x; }");
     assert!(result.is_err());
-    assert!(
-        result.unwrap_err().message.contains("cannot dereference non-pointer")
-    );
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("cannot dereference non-pointer"));
 }
 
 #[test]
 fn test_type_check_addr_of_non_variable() {
     let result = parse_and_type_check("void main() { int x = 1; int* p = &(x + 1); }");
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message
-            .contains("can only take address of variables")
-    );
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("can only take address of variables"));
 }
 
 #[test]
 fn test_type_check_deref_assign_type_mismatch() {
-    let result = parse_and_type_check(
-        "void main() { int x = 1; int* p = &x; *p = true; }",
-    );
+    let result = parse_and_type_check("void main() { int x = 1; int* p = &x; *p = true; }");
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message
-            .contains("assignment through pointer")
-    );
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("assignment through pointer"));
 }
 
 #[test]
 fn test_type_check_call_expects_pointer_arg() {
-    let result = parse_and_type_check(
-        "void take(int* p) { *p = 1; }\nvoid main() { int x = 0; take(x); }",
-    );
+    let result =
+        parse_and_type_check("void take(int* p) { *p = 1; }\nvoid main() { int x = 0; take(x); }");
     assert!(result.is_err());
     assert!(result.unwrap_err().message.contains("argument"));
 }
 
 #[test]
 fn test_type_check_assign_int_from_pointer() {
-    let result = parse_and_type_check(
-        "void main() { int x = 1; int* p = &x; int y = p; }",
-    );
+    let result = parse_and_type_check("void main() { int x = 1; int* p = &x; int y = p; }");
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -359,7 +358,9 @@ fn test_type_check_assign_int_from_pointer() {
 
 #[test]
 fn test_type_check_decl_without_init_any_type() {
-    for decl in ["int x;", "float f;", "bool b;", "str s;", "int[] a;", "int* p;"] {
+    for decl in [
+        "int x;", "float f;", "bool b;", "str s;", "int[] a;", "int* p;",
+    ] {
         let src = format!("void main() {{ {decl} }}");
         assert!(parse_and_type_check(&src).is_ok(), "{decl}");
     }
@@ -385,5 +386,380 @@ fn test_type_check_decl_without_init_rules_still_apply() {
 fn test_type_check_decl_without_init_keeps_none() {
     let prog = parse_and_type_check("void main() int x;").unwrap();
     let main_fn = prog.main_function().unwrap();
-    assert!(matches!(main_fn.body.stmt, Statement::Decl { init: None, .. }));
+    assert!(matches!(
+        main_fn.body.stmt,
+        Statement::Decl { init: None, .. }
+    ));
+}
+
+// --- Struct ---
+
+#[test]
+fn test_type_check_struct_valid_definition() {
+    let src = "struct Point { int x; int y; }; void main() {}";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_duplicate_definition_fails() {
+    let src = "struct Point { int x; }; struct Point { float y; }; void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("duplicate struct definition"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_name_collision_with_function() {
+    let src = "void Point() {} struct Point { int x; }; void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("name collision"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_function_name_collision_with_struct() {
+    let src = "struct Point { int x; }; void Point() {} void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("name collision"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_duplicate_fields_fails() {
+    let src = "struct Point { int x; float x; }; void main() {}";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("duplicate field 'x'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_function_with_struct_param_fails() {
+    // Decision 15: functions cannot have struct parameters
+    let src = "struct Point { int x; }; void f(Point p) {} void main() {}";
+    // Note: the parser itself rejects UserDefined in params, returning a parse error
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("parse failed") || err.message.contains("cannot have a struct type")
+    );
+}
+
+// --- Local Variable Declarations with Structs (Task B - Step 2) ---
+
+#[test]
+fn test_type_check_struct_local_decl_valid() {
+    let src = "struct Point { int x; }; void main() { Point p; }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_undefined_type_fails() {
+    let src = "void main() { Fantasma f; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("undefined type: 'Fantasma'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_use_before_decl_fails() {
+    // Decision 11: declaration before use
+    let src = "void main() { Point p; } struct Point { int x; };";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("undefined type: 'Point'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_local_var_name_collision_with_struct() {
+    // Decision 12: local variable cannot share name with a struct
+    let src = "struct Point { int x; }; void main() { int Point = 10; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(err.message.contains("name collision"), "{}", err.message);
+}
+
+#[test]
+fn test_type_check_struct_copy_assignment_in_decl_fails() {
+    // Decision 24: structs cannot be copied from another variable
+    let src = "struct Point { int x; }; void main() { Point a; Point b = a; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("cannot copy struct"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_array_of_structs_fails() {
+    // Decision 24: array of structs is not supported (rejected by parser or type checker)
+    let src = "struct Point { int x; }; void main() { Point[] lista; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("parse failed")
+            || err.message.contains("arrays of structs are not supported"),
+        "{}",
+        err.message
+    );
+}
+
+// --- Nominal Typing and Compatibility (Task B - Step 3) ---
+
+#[test]
+fn test_type_check_nominal_typing_compatibility() {
+    use mini_c::semantic::types_compatible;
+
+    let pessoa = Type::UserDefined("Pessoa".to_string());
+    let aluno = Type::UserDefined("Aluno".to_string());
+    let pessoa_clone = Type::UserDefined("Pessoa".to_string());
+
+    // Same struct name is compatible
+    assert!(types_compatible(&pessoa, &pessoa_clone));
+
+    // Different struct names are never compatible, even if they have identical shape (TAPL §19.3)
+    assert!(!types_compatible(&pessoa, &aluno));
+
+    // Structs are not compatible with primitive types
+    assert!(!types_compatible(&pessoa, &Type::Int));
+
+    // Structs are not compatible with Type::Any (protects print and generic functions)
+    assert!(!types_compatible(&pessoa, &Type::Any));
+}
+
+#[test]
+fn test_type_check_struct_cannot_be_printed() {
+    // Decisions 17 & 24: print cannot accept whole structs
+    let src = "struct Point { int x; }; void main() { Point p; print(p); }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("passing structs to functions is not supported"),
+        "{}",
+        err.message
+    );
+}
+
+// --- Prohibited Operations on Whole Structs (Task B - Step 4 / Decision 24) ---
+
+#[test]
+fn test_type_check_struct_whole_assignment_fails() {
+    // Decision 18 & 24: a = b is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; Point b; a = b; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("cannot assign whole struct"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_equality_comparison_fails() {
+    // Decision 16 & 24: a == b is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; Point b; if a == b {} }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("equality operators are not supported for structs"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_inequality_comparison_fails() {
+    // Decision 16 & 24: a != b is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; Point b; if a != b {} }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("equality operators are not supported for structs"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_in_array_literal_fails() {
+    // Decision 24: [a] is prohibited
+    let src = "struct Point { int x; }; void main() { Point a; int x = [a][0]; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("arrays of structs are not supported"),
+        "{}",
+        err.message
+    );
+}
+
+// --- Struct Field Access: Read and Write ---
+
+#[test]
+fn test_type_check_struct_field_read_and_write_valid() {
+    let src = "struct Pessoa { int idade; str nome; int[] v; }; void main() { Pessoa p; p.idade = 3; p.nome = \"Ana\"; int x = p.idade; print(p.idade); }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_field_on_non_struct_fails() {
+    let src = "void main() { int x = 1; print(x.y); }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("cannot access field 'y' on non-struct type"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_field_assign_on_non_struct_fails() {
+    let src = "void main() { int x = 1; x.y = 2; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("cannot access field 'y' on non-struct type"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_unknown_field_read_fails() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p; print(p.inexistente); }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("struct 'Pessoa' has no field 'inexistente'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_unknown_field_write_fails() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p; p.inexistente = 10; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("struct 'Pessoa' has no field 'inexistente'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_field_assign_type_mismatch_fails() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p; p.idade = \"a\"; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("assignment to Pessoa.idade: expected Int, got Str"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_array_field_index_read_and_write_valid() {
+    let src = "struct Container { int[] v; }; void main() { Container p; p.v = [1, 2, 3]; p.v[0] = 9; print(p.v[0]); }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_array_field_index_type_mismatch_fails() {
+    let src = "struct Container { int[] v; }; void main() { Container p; p.v = [1, 2, 3]; p.v[0] = \"errado\"; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("assignment type mismatch"),
+        "{}",
+        err.message
+    );
+}
+
+// --- Struct Literal (Pessoa D) ---
+
+#[test]
+fn test_type_check_struct_literal_valid() {
+    let src = "struct Pessoa { int idade; str nome; }; void main() { Pessoa p = Pessoa { idade: 30, nome: \"Ana\" }; }";
+    assert!(parse_and_type_check(src).is_ok());
+}
+
+#[test]
+fn test_type_check_struct_literal_unknown_struct() {
+    let src = "void main() { Fantasma p = Fantasma { x: 1 }; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message.contains("undefined type: 'Fantasma'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_literal_unknown_field() {
+    let src = "struct Pessoa { int idade; }; void main() { Pessoa p = Pessoa { idade: 30, desconhecido: 1 }; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("unknown field 'desconhecido' in struct literal for 'Pessoa'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_literal_duplicate_field() {
+    let src = "struct Pessoa { int idade; str nome; }; void main() { Pessoa p = Pessoa { idade: 30, idade: 31, nome: \"Ana\" }; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("duplicate field 'idade' in struct literal for 'Pessoa'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_literal_missing_field() {
+    let src =
+        "struct Pessoa { int idade; str nome; }; void main() { Pessoa p = Pessoa { idade: 30 }; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("missing field 'nome' in struct literal for 'Pessoa'"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_literal_field_type_mismatch() {
+    let src = "struct Pessoa { int idade; str nome; }; void main() { Pessoa p = Pessoa { idade: \"trinta\", nome: \"Ana\" }; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("field 'idade' of struct 'Pessoa': expected Int, got Str"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_type_check_struct_literal_nominal_type_mismatch() {
+    let src = "struct Pessoa { int idade; }; struct Aluno { int idade; }; void main() { Pessoa p = Aluno { idade: 20 }; }";
+    let err = parse_and_type_check(src).unwrap_err();
+    assert!(
+        err.message
+            .contains("expected UserDefined(\"Pessoa\"), got UserDefined(\"Aluno\")"),
+        "{}",
+        err.message
+    );
 }

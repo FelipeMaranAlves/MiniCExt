@@ -34,4 +34,4 @@
 
 pub mod type_checker;
 
-pub use type_checker::{type_check, TypeError};
+pub use type_checker::{lookup_struct, type_check, types_compatible, TypeError};
